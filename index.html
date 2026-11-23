@@ -1,0 +1,2371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyBlimp Cricket Live | Aerial 2-Over WebRTC Cricket</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PeerJS for Serverless WebRTC P2P Multiplayer -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <!-- Google Fonts: Outfit & JetBrains Mono -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600;700;800&family=Outfit:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #075985;
+            user-select: none;
+        }
+
+        .font-mono-code {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Full-Viewport Live 2.5D Sky Stadium Canvas */
+        #stadium-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            z-index: 0;
+            cursor: crosshair;
+        }
+
+        /* Frosted Glass Lobby & HUD Panels */
+        .sky-glass {
+            background: rgba(255, 255, 255, 0.84);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 2.5px solid rgba(255, 255, 255, 0.95);
+            box-shadow: 0 24px 55px rgba(8, 47, 73, 0.42), inset 0 2px 6px rgba(255, 255, 255, 0.9);
+        }
+
+        .dark-hud {
+            background: rgba(15, 23, 42, 0.88);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 2px solid rgba(125, 211, 252, 0.42);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+        }
+
+        /* Arcade Press Buttons */
+        .btn-press {
+            transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.15s ease;
+        }
+        .btn-press:active:not(:disabled) {
+            transform: translateY(3px);
+            box-shadow: none !important;
+        }
+
+        @keyframes floatGentle {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+        }
+        .animate-float {
+            animation: floatGentle 3.2s ease-in-out infinite;
+        }
+
+        /* Custom Scrollbar for Chat */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(56, 189, 248, 0.6);
+            border-radius: 999px;
+        }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <!-- =========================================================================
+         1. FULL-SCREEN LIVE 2.5D GAS-BALLOON STADIUM CANVAS (ALWAYS ACTIVE)
+         ========================================================================= -->
+    <canvas id="stadium-canvas"></canvas>
+
+    <!-- =========================================================================
+         2. TOP NAVIGATION BAR (SCENIC TOGGLE, PING STATUS & SOUND)
+         ========================================================================= -->
+    <header class="fixed top-0 left-0 right-0 z-30 px-3 md:px-5 pt-3 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+        <!-- Brand Badge -->
+        <div class="pointer-events-auto flex items-center gap-2.5 bg-slate-900/90 backdrop-blur px-3.5 py-1.5 rounded-full border-2 border-amber-300/80 shadow-lg">
+            <!-- Inline SVG Dirigible & Cricket Crest -->
+            <svg class="w-7 h-7" viewBox="0 0 36 36" fill="none">
+                <ellipse cx="18" cy="13" rx="14" ry="8" fill="#F59E0B" stroke="#FEF08A" stroke-width="1.5"/>
+                <path d="M6 13H30" stroke="#E11D48" stroke-width="4"/>
+                <rect x="13" y="21" width="10" height="4" rx="1.5" fill="#0F172A" stroke="#FBBF24"/>
+                <line x1="11" y1="19" x2="9" y2="30" stroke="#E0F2FE" stroke-width="1.2"/>
+                <line x1="25" y1="19" x2="27" y2="30" stroke="#E0F2FE" stroke-width="1.2"/>
+                <ellipse cx="18" cy="31" rx="12" ry="3.2" fill="#22C55E" stroke="#FFFFFF" stroke-width="1.2"/>
+            </svg>
+            <span class="font-extrabold text-amber-200 text-sm md:text-base tracking-wide">SKYBLIMP CRICKET LIVE</span>
+            <span class="hidden sm:inline-block bg-sky-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase">WebRTC</span>
+        </div>
+
+        <!-- Right Controls -->
+        <div class="pointer-events-auto flex items-center gap-2">
+            <!-- Scenic View Toggle (Hide Lobby Overlay to Watch Live Sky Stadium) -->
+            <button id="btn-scenic" onclick="toggleScenicView()" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold px-3.5 py-1.5 rounded-full border-2 border-white shadow-md text-xs md:text-sm flex items-center gap-1.5 transition">
+                <i id="scenic-icon" class="fa-solid fa-eye"></i>
+                <span id="scenic-text">Scenic View</span>
+            </button>
+
+            <!-- Live P2P Ping Indicator -->
+            <div id="ping-badge" class="hidden items-center gap-1.5 bg-slate-900/90 text-emerald-300 px-3 py-1.5 rounded-full border border-emerald-400/50 text-xs font-bold shadow">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                <span id="ping-text">P2P 24ms</span>
+            </div>
+
+            <!-- In-Match Chat Toggle -->
+            <button id="btn-chat-toggle" onclick="toggleChatDrawer()" class="hidden relative bg-sky-600 hover:bg-sky-500 text-white font-bold px-3 py-1.5 rounded-full border-2 border-white shadow-md text-xs md:text-sm items-center gap-1.5 transition">
+                <i class="fa-solid fa-comments"></i>
+                <span class="hidden sm:inline">Chat</span>
+                <span id="chat-unread-dot" class="hidden absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-rose-500 border-2 border-white"></span>
+            </button>
+
+            <!-- Sound Mute Toggle -->
+            <button onclick="toggleSound()" class="bg-white/95 hover:bg-white text-slate-900 w-9 h-9 rounded-full border-2 border-sky-200 shadow-md flex items-center justify-center transition" title="Toggle Sound">
+                <i id="sound-icon" class="fa-solid fa-volume-high text-sky-600"></i>
+            </button>
+
+            <!-- Leave Match Button -->
+            <button id="btn-exit-match" onclick="openConfirmExit()" class="hidden bg-rose-600 hover:bg-rose-500 text-white font-bold px-3 py-1.5 rounded-full border-2 border-white shadow-md text-xs md:text-sm items-center gap-1.5 transition">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                <span class="hidden sm:inline">Exit</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Floating Return Pill when Scenic View Hides Lobby -->
+    <div id="scenic-return-pill" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-slate-900/90 backdrop-blur-md px-5 py-3 rounded-full border-2 border-amber-300 shadow-2xl">
+        <span class="text-white font-bold text-sm">🎈 Viewing SkyBlimp Arena Live</span>
+        <button onclick="toggleScenicView()" class="px-4 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs md:text-sm rounded-full shadow">
+            Open Game Lobby 🏏
+        </button>
+    </div>
+
+    <!-- =========================================================================
+         3. LOBBY OVERLAY (WEBRTC MULTIPLAYER & LOCAL / TRIVIA MODES)
+         ========================================================================= -->
+    <main id="lobby-overlay" class="fixed inset-0 z-20 flex items-center justify-center p-3 md:p-5 overflow-y-auto">
+        <div class="sky-glass w-full max-w-4xl rounded-3xl p-5 md:p-7 my-auto">
+            <!-- Hero Header -->
+            <div class="text-center mb-4">
+                <div class="inline-flex items-center gap-2 bg-sky-100 border border-sky-300 text-sky-900 text-xs font-extrabold uppercase tracking-wider px-3.5 py-1 rounded-full mb-1.5">
+                    <span>🎈 Stratosphere Turf Stadium</span>
+                    <span>•</span>
+                    <span>2-2 Overs Cricket</span>
+                </div>
+                <h1 class="text-3xl md:text-5xl font-black text-slate-900 tracking-tight">
+                    SkyBlimp <span class="text-sky-600">Cricket Live</span>
+                </h1>
+                <p class="text-slate-600 text-xs md:text-sm font-semibold mt-1">
+                    One player bowls live deliveries while the other bats in the same innings—play online via Room Code or locally!
+                </p>
+            </div>
+
+            <!-- Mode Selector Tabs -->
+            <div class="grid grid-cols-2 gap-2 p-1.5 bg-slate-900/10 rounded-2xl max-w-lg mx-auto mb-5">
+                <button id="tab-webrtc" onclick="setLobbyTab('webrtc')" class="py-2.5 px-3 rounded-xl font-extrabold text-xs md:text-sm bg-sky-600 text-white shadow transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-wifi"></i>
+                    <span>1v1 Live WebRTC</span>
+                </button>
+                <button id="tab-local" onclick="setLobbyTab('local')" class="py-2.5 px-3 rounded-xl font-extrabold text-xs md:text-sm text-slate-800 hover:bg-white/70 transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Local / Trivia Mode</span>
+                </button>
+            </div>
+
+            <!-- ===============================================================
+                 TAB A: 1v1 LIVE WEBRTC (ROOM CODE & INVITE LINK)
+                 =============================================================== -->
+            <div id="view-webrtc" class="space-y-4">
+                <!-- Player Profile & Host Match Rules -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <div class="bg-white/80 p-3.5 rounded-2xl border-2 border-sky-200">
+                        <label class="block text-[11px] font-extrabold uppercase tracking-wider text-sky-900 mb-1.5">
+                            🏏 Your Player / Team Name &amp; Kit
+                        </label>
+                        <div class="flex gap-2">
+                            <input id="rtc-player-name" type="text" value="Sky Striker" maxlength="16"
+                                class="flex-grow px-3.5 py-2 rounded-xl border-2 border-sky-300 focus:border-sky-600 focus:outline-none font-bold text-slate-800 bg-white">
+                            <select id="rtc-player-kit" class="px-2.5 py-2 rounded-xl border-2 border-sky-300 font-bold text-xs bg-white">
+                                <option value="#2563eb" selected>🔵 Royal Blue</option>
+                                <option value="#e11d48">🔴 Crimson</option>
+                                <option value="#16a34a">🟢 Emerald</option>
+                                <option value="#eab308">🟡 Gold</option>
+                                <option value="#7c3aed">🟣 Violet</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="bg-white/80 p-3.5 rounded-2xl border-2 border-amber-200">
+                        <label class="block text-[11px] font-extrabold uppercase tracking-wider text-amber-900 mb-1.5">
+                            ⚙️ Match Rules (Host Toss &amp; Overs)
+                        </label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <select id="rtc-overs" class="px-2 py-2 rounded-xl border-2 border-amber-300 font-bold text-xs bg-white">
+                                <option value="1">1 Over</option>
+                                <option value="2" selected>2 Overs</option>
+                                <option value="3">3 Overs</option>
+                            </select>
+                            <select id="rtc-toss" class="px-2 py-2 rounded-xl border-2 border-amber-300 font-bold text-xs bg-white">
+                                <option value="bat" selected>🏏 I Bat 1st</option>
+                                <option value="bowl">⚾ I Bowl 1st</option>
+                            </select>
+                            <select id="rtc-trivia" class="px-2 py-2 rounded-xl border-2 border-amber-300 font-bold text-xs bg-white">
+                                <option value="off" selected>⚡ Pure Live</option>
+                                <option value="every3">🎓 Trivia Boost</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Create Room vs Join Room Columns -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- HOST COLUMN -->
+                    <div class="bg-gradient-to-br from-emerald-50 to-teal-100/90 p-4 md:p-5 rounded-2xl border-2 border-emerald-400 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="bg-emerald-600 text-white text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full">Host Match</span>
+                                <span class="text-xl">🎈🏟️</span>
+                            </div>
+                            <h3 class="font-extrabold text-lg text-slate-900">Create Sky Room</h3>
+                            <p class="text-xs text-slate-600 font-medium mt-0.5 mb-3">
+                                Generate a 6-character Room Code &amp; Invite Link (works across devices via WebRTC or across browser tabs in sandboxed previews).
+                            </p>
+                        </div>
+
+                        <!-- Idle Create Button -->
+                        <div id="host-create-box">
+                            <button id="btn-create-room" onclick="createWebRTCRoom()" class="btn-press w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-base rounded-xl shadow-[0_4px_0_#064e3b] flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-plus-circle"></i>
+                                <span>Create Room &amp; Invite Link</span>
+                            </button>
+                        </div>
+
+                        <!-- Waiting Room Code & Link Display -->
+                        <div id="host-room-box" class="hidden space-y-2.5 bg-white/95 p-3 rounded-xl border border-emerald-300">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <span class="text-[10px] font-extrabold uppercase text-slate-400 block">Room Code</span>
+                                    <span id="display-room-code" class="font-mono-code font-extrabold text-2xl tracking-widest text-emerald-700">------</span>
+                                </div>
+                                <button onclick="copyRoomCode()" class="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-bold text-xs rounded-lg transition">
+                                    <i class="fa-solid fa-copy mr-1"></i>Copy Code
+                                </button>
+                            </div>
+
+                            <div>
+                                <span class="text-[10px] font-extrabold uppercase text-slate-400 block mb-1">One-Click Invite Link</span>
+                                <div class="flex gap-1.5">
+                                    <input id="display-invite-link" type="text" readonly class="w-full px-2.5 py-1.5 rounded-lg bg-slate-100 border border-slate-300 text-[11px] font-mono-code text-slate-700">
+                                    <button onclick="copyInviteLink()" class="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-lg flex-shrink-0 transition">
+                                        Copy Link
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-2 text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200">
+                                <i class="fa-solid fa-spinner fa-spin"></i>
+                                <span id="host-status-text">Waiting for opponent to join...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GUEST COLUMN -->
+                    <div class="bg-gradient-to-br from-blue-50 to-indigo-100/90 p-4 md:p-5 rounded-2xl border-2 border-blue-400 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="bg-blue-600 text-white text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full">Join Match</span>
+                                <span class="text-xl">🏏🔗</span>
+                            </div>
+                            <h3 class="font-extrabold text-lg text-slate-900">Enter Room Code</h3>
+                            <p class="text-xs text-slate-600 font-medium mt-0.5 mb-3">
+                                Paste the 6-character Room Code from your friend (auto-filled if you opened an Invite Link).
+                            </p>
+                        </div>
+
+                        <div class="space-y-2.5">
+                            <input id="input-join-code" type="text" maxlength="6" placeholder="E.G. SKY842"
+                                class="w-full px-4 py-2.5 rounded-xl border-2 border-blue-300 focus:border-blue-600 focus:outline-none font-mono-code font-extrabold text-xl text-center uppercase tracking-widest text-slate-900 bg-white">
+                            <button id="btn-join-room" onclick="joinWebRTCRoom()" class="btn-press w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-base rounded-xl shadow-[0_4px_0_#1e3a8a] flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-bolt"></i>
+                                <span>Connect &amp; Play Live</span>
+                            </button>
+                            <p id="join-status-text" class="hidden text-xs font-bold text-center text-blue-800"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <p id="lobby-toast" class="hidden text-center text-xs font-extrabold text-emerald-700 bg-emerald-100 border border-emerald-300 py-1.5 px-3 rounded-xl"></p>
+            </div>
+
+            <!-- ===============================================================
+                 TAB B: LOCAL PASS & PLAY / SOLO AI / CLASSROOM TRIVIA
+                 =============================================================== -->
+            <div id="view-local" class="hidden space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <div class="bg-white/85 p-3.5 rounded-2xl border-2 border-sky-300">
+                        <label class="block text-xs font-extrabold uppercase text-sky-900 mb-1">🏏 Team 1 (Bats 1st)</label>
+                        <div class="flex gap-2">
+                            <input id="local-t1-name" type="text" value="Cloud Strikers" maxlength="18" class="flex-grow px-3 py-2 rounded-xl border-2 border-sky-300 font-bold bg-white">
+                            <select id="local-t1-kit" class="px-2.5 py-2 rounded-xl border-2 border-sky-300 font-bold text-xs bg-white">
+                                <option value="#2563eb" selected>🔵 Blue</option>
+                                <option value="#16a34a">🟢 Green</option>
+                                <option value="#eab308">🟡 Gold</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="bg-white/85 p-3.5 rounded-2xl border-2 border-rose-300">
+                        <label class="block text-xs font-extrabold uppercase text-rose-900 mb-1">⚾ Team 2 (Bowls 1st)</label>
+                        <div class="flex gap-2">
+                            <input id="local-t2-name" type="text" value="Blimp Blazers" maxlength="18" class="flex-grow px-3 py-2 rounded-xl border-2 border-rose-300 font-bold bg-white">
+                            <select id="local-t2-kit" class="px-2.5 py-2 rounded-xl border-2 border-rose-300 font-bold text-xs bg-white">
+                                <option value="#e11d48" selected>🔴 Red</option>
+                                <option value="#ea580c">🟠 Orange</option>
+                                <option value="#7c3aed">🟣 Purple</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-white/85 p-3.5 rounded-2xl border-2 border-slate-200">
+                    <div>
+                        <label class="block text-[11px] font-extrabold uppercase text-slate-600 mb-1">Innings Length</label>
+                        <select id="local-overs" class="w-full px-3 py-2 rounded-xl border-2 border-slate-300 font-bold text-xs bg-white">
+                            <option value="1">1 Over (6 Balls)</option>
+                            <option value="2" selected>2 Overs (12 Balls)</option>
+                            <option value="3">3 Overs (18 Balls)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-extrabold uppercase text-slate-600 mb-1">Opponent Control</label>
+                        <select id="local-opponent" class="w-full px-3 py-2 rounded-xl border-2 border-slate-300 font-bold text-xs bg-white">
+                            <option value="pvp" selected>👥 2-Player Pass &amp; Play</option>
+                            <option value="ai">🤖 Vs Sky-AI Bowler/Batter</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-extrabold uppercase text-slate-600 mb-1">Classroom Trivia</label>
+                        <select id="local-trivia" class="w-full px-3 py-2 rounded-xl border-2 border-slate-300 font-bold text-xs bg-white">
+                            <option value="every2" selected>🎓 Trivia Power-Up (Every 2 Balls)</option>
+                            <option value="off">⚡ Pure Arcade Cricket</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="text-center pt-1">
+                    <button onclick="startLocalMatch()" class="btn-press w-full md:w-auto px-12 py-3.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-extrabold text-lg rounded-2xl shadow-[0_5px_0_#064e3b] border-2 border-emerald-200">
+                        🎈 LAUNCH 2-OVER SKY MATCH 🏏
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- =========================================================================
+         4. IN-MATCH BROADCAST HUD & INTERACTIVE CONTROLS (OVERLAYS CANVAS)
+         ========================================================================= -->
+    <section id="match-hud" class="hidden fixed inset-0 z-20 pointer-events-none flex flex-col justify-between p-2.5 md:p-4 pt-14 md:pt-16">
+
+        <!-- TOP TV BROADCAST SCOREBUG -->
+        <div class="pointer-events-auto max-w-5xl w-full mx-auto dark-hud rounded-2xl px-3.5 py-2.5 text-white flex flex-wrap items-center justify-between gap-2">
+            <!-- Batting Team Score -->
+            <div class="flex items-center gap-3">
+                <div id="hud-bat-badge" class="w-9 h-9 rounded-xl bg-blue-600 border-2 border-white flex items-center justify-center text-base font-bold">
+                    🏏
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span id="hud-bat-name" class="font-extrabold text-sm md:text-base text-amber-300">Sky Striker</span>
+                        <span id="hud-innings-pill" class="bg-sky-500/30 border border-sky-400/50 text-sky-200 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase">1st Innings</span>
+                    </div>
+                    <div class="flex items-baseline gap-2">
+                        <span id="hud-score-wickets" class="font-mono-code font-extrabold text-2xl md:text-3xl text-white">0/0</span>
+                        <span id="hud-overs-text" class="font-mono-code text-xs md:text-sm text-sky-300 font-bold">(0.0 / 2.0 Ov)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center Match Target & Wind Info -->
+            <div class="text-center">
+                <div id="hud-target-banner" class="text-xs md:text-sm font-extrabold text-emerald-300">
+                    Set a big 2-Over sky target!
+                </div>
+                <div class="flex items-center justify-center gap-3 text-[11px] text-slate-300 font-bold mt-0.5">
+                    <span id="hud-wind-text">🌬️ Wind: 8 km/h ➔</span>
+                    <span>•</span>
+                    <span id="hud-bowl-team">Bowling: Opponent</span>
+                </div>
+            </div>
+
+            <!-- Current Over Ball-by-Ball Timeline -->
+            <div class="flex items-center gap-1.5" id="hud-ball-timeline">
+                <span class="w-7 h-7 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-xs font-bold text-slate-400">•</span>
+                <span class="w-7 h-7 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-xs font-bold text-slate-400">•</span>
+                <span class="w-7 h-7 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-xs font-bold text-slate-400">•</span>
+                <span class="w-7 h-7 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-xs font-bold text-slate-400">•</span>
+                <span class="w-7 h-7 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-xs font-bold text-slate-400">•</span>
+                <span class="w-7 h-7 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-xs font-bold text-slate-400">•</span>
+            </div>
+        </div>
+
+        <!-- CENTER DELIVERY OUTCOME CALLOUT BANNER -->
+        <div id="delivery-callout" class="hidden self-center pointer-events-none transform transition-all">
+            <div id="callout-card" class="px-8 py-4 rounded-3xl border-4 border-white shadow-2xl text-center bg-slate-900/95">
+                <div id="callout-emoji" class="text-4xl md:text-5xl mb-1">🏏💥</div>
+                <div id="callout-title" class="font-black text-2xl md:text-4xl text-amber-300 tracking-wide">MASSIVE SIX! +6</div>
+                <p id="callout-sub" class="text-white text-xs md:text-sm font-bold mt-0.5">Launched over the sky railing into the clouds!</p>
+            </div>
+        </div>
+
+        <!-- BOTTOM ROLE-SPECIFIC CONTROL DECK (BOWLER OR BATTER) -->
+        <div class="pointer-events-auto max-w-4xl w-full mx-auto">
+
+            <!-- BOWLER CONTROL PANEL -->
+            <div id="controls-bowler" class="hidden dark-hud rounded-2xl p-3 md:p-4 text-white">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                    <div class="flex items-center gap-2">
+                        <span class="bg-rose-600 text-white text-[11px] font-extrabold uppercase px-2.5 py-0.5 rounded-full">Your Turn: Bowling</span>
+                        <span class="text-xs md:text-sm font-bold text-sky-200">Tap/Click pitch to place bounce spot, choose delivery &amp; bowl!</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs font-bold">
+                        <span class="text-amber-300">Swing/Spin:</span>
+                        <input id="bowl-swing-slider" type="range" min="-100" max="100" value="15" oninput="syncBowlerAim()" class="w-24 md:w-32 accent-amber-400 cursor-pointer">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                    <button onclick="selectDeliveryType('yorker')" id="deliv-yorker" class="deliv-btn py-2 px-2.5 rounded-xl border-2 border-amber-400 bg-amber-500/25 font-bold text-xs text-left">
+                        <div class="text-amber-300 font-extrabold">🔥 Pace Yorker</div>
+                        <div class="text-[10px] text-slate-300">142 km/h • Full</div>
+                    </button>
+                    <button onclick="selectDeliveryType('swing')" id="deliv-swing" class="deliv-btn py-2 px-2.5 rounded-xl border-2 border-slate-600 bg-slate-800/80 hover:border-sky-400 font-bold text-xs text-left">
+                        <div class="text-sky-300 font-extrabold">🌬️ Sky Swing</div>
+                        <div class="text-[10px] text-slate-300">134 km/h • Curve</div>
+                    </button>
+                    <button onclick="selectDeliveryType('spin')" id="deliv-spin" class="deliv-btn py-2 px-2.5 rounded-xl border-2 border-slate-600 bg-slate-800/80 hover:border-sky-400 font-bold text-xs text-left">
+                        <div class="text-emerald-300 font-extrabold">🌀 Off-Spin</div>
+                        <div class="text-[10px] text-slate-300">102 km/h • Sharp Turn</div>
+                    </button>
+                    <button onclick="selectDeliveryType('bouncer')" id="deliv-bouncer" class="deliv-btn py-2 px-2.5 rounded-xl border-2 border-slate-600 bg-slate-800/80 hover:border-sky-400 font-bold text-xs text-left">
+                        <div class="text-rose-300 font-extrabold">⚡ Sky Bouncer</div>
+                        <div class="text-[10px] text-slate-300">138 km/h • Short</div>
+                    </button>
+
+                    <button id="btn-bowl-now" onclick="executeBowlDelivery()" class="btn-press col-span-2 sm:col-span-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-500 hover:to-orange-500 text-white font-black text-sm md:text-base shadow-[0_4px_0_#881337] border border-rose-300 flex items-center justify-center gap-1.5">
+                        <span>⚾ BOWL!</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- BATTER CONTROL PANEL -->
+            <div id="controls-batter" class="hidden dark-hud rounded-2xl p-3 md:p-4 text-white">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                    <div class="flex items-center gap-2">
+                        <span class="bg-emerald-600 text-white text-[11px] font-extrabold uppercase px-2.5 py-0.5 rounded-full">Your Turn: Batting</span>
+                        <span id="batter-status-msg" class="text-xs md:text-sm font-bold text-amber-200">Pick shot direction (Arrow Keys) &amp; Swing (Spacebar)!</span>
+                    </div>
+                    <span id="power-bat-pill" class="hidden bg-amber-400 text-slate-950 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full animate-pulse">
+                        ⚡ 2X POWER BAT ACTIVE!
+                    </span>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                    <button onclick="selectShotDirection('off')" id="shot-off" class="shot-btn py-2 px-2.5 rounded-xl border-2 border-slate-600 bg-slate-800/80 hover:border-sky-400 font-bold text-xs text-left">
+                        <div class="text-sky-300 font-extrabold">⬅ Off Drive</div>
+                        <div class="text-[10px] text-slate-300">Cover / Point</div>
+                    </button>
+                    <button onclick="selectShotDirection('straight')" id="shot-straight" class="shot-btn py-2 px-2.5 rounded-xl border-2 border-amber-400 bg-amber-500/25 font-bold text-xs text-left">
+                        <div class="text-amber-300 font-extrabold">⬆ Straight Loft</div>
+                        <div class="text-[10px] text-slate-300">Down the Ground</div>
+                    </button>
+                    <button onclick="selectShotDirection('leg')" id="shot-leg" class="shot-btn py-2 px-2.5 rounded-xl border-2 border-slate-600 bg-slate-800/80 hover:border-sky-400 font-bold text-xs text-left">
+                        <div class="text-emerald-300 font-extrabold">➡ Leg Pull</div>
+                        <div class="text-[10px] text-slate-300">Mid-Wicket / Fine</div>
+                    </button>
+                    <button onclick="selectShotDirection('defend')" id="shot-defend" class="shot-btn py-2 px-2.5 rounded-xl border-2 border-slate-600 bg-slate-800/80 hover:border-sky-400 font-bold text-xs text-left">
+                        <div class="text-slate-200 font-extrabold">⬇ Safe Tap</div>
+                        <div class="text-[10px] text-slate-300">Quick 1-2 Runs</div>
+                    </button>
+
+                    <button id="btn-swing-now" onclick="executeBatSwing()" class="btn-press col-span-2 sm:col-span-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white font-black text-sm md:text-base shadow-[0_4px_0_#064e3b] border border-emerald-200 flex items-center justify-center gap-1.5">
+                        <span>🏏 SWING!</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- WAITING FOR OPPONENT / AI BANNER -->
+            <div id="controls-waiting" class="hidden dark-hud rounded-2xl p-3.5 text-center text-white">
+                <div class="inline-flex items-center gap-2.5 font-extrabold text-sm md:text-base text-sky-200">
+                    <i class="fa-solid fa-baseball fa-spin text-amber-400"></i>
+                    <span id="waiting-role-text">Opponent is aiming their delivery on the sky pitch...</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- =========================================================================
+         5. INNINGS BREAK & FULL-TIME VICTORY MODALS
+         ========================================================================= -->
+    <div id="innings-modal" class="hidden fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="sky-glass w-full max-w-md rounded-3xl p-6 text-center">
+            <div class="text-5xl mb-2">🔄🏏</div>
+            <span class="bg-amber-100 border border-amber-400 text-amber-900 text-xs font-extrabold uppercase px-3 py-1 rounded-full">Innings Break</span>
+            <h2 id="innings-headline" class="font-black text-2xl md:text-3xl text-slate-900 mt-2">1st Innings Complete!</h2>
+            <p id="innings-summary" class="text-slate-700 font-bold text-sm md:text-base mt-2 mb-5">
+                Cloud Strikers scored 18/1. Target to win: 19 runs in 2 overs!
+            </p>
+            <button id="btn-start-2nd-innings" onclick="startSecondInnings()" class="btn-press w-full py-3.5 bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-lg rounded-2xl shadow-[0_4px_0_#0369a1]">
+                Start 2nd Innings (Swap Roles) ➔
+            </button>
+        </div>
+    </div>
+
+    <div id="victory-modal" class="hidden fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="sky-glass w-full max-w-xl rounded-3xl p-6 md:p-8 text-center">
+            <div class="text-6xl mb-2 animate-float">🏆</div>
+            <span class="bg-amber-100 border-2 border-amber-400 text-amber-900 text-xs font-extrabold uppercase px-3.5 py-1 rounded-full">Match Result</span>
+            <h2 id="victory-headline" class="font-black text-3xl md:text-4xl text-slate-900 mt-2">Sky Strikers Win!</h2>
+            <p id="victory-subtext" class="text-slate-600 font-bold text-sm md:text-base mt-1 mb-6">
+                Won by 6 runs high above the clouds!
+            </p>
+
+            <div class="grid grid-cols-2 gap-3 mb-6">
+                <div class="bg-sky-50 border-2 border-sky-300 rounded-2xl p-4">
+                    <div id="vic-t1-name" class="font-extrabold text-slate-800 text-base">Team 1</div>
+                    <div id="vic-t1-score" class="font-mono-code font-black text-3xl text-sky-700 mt-1">24/1</div>
+                </div>
+                <div class="bg-rose-50 border-2 border-rose-300 rounded-2xl p-4">
+                    <div id="vic-t2-name" class="font-extrabold text-slate-800 text-base">Team 2</div>
+                    <div id="vic-t2-score" class="font-mono-code font-black text-3xl text-rose-600 mt-1">18/2</div>
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                <button id="btn-rematch" onclick="requestRematch()" class="btn-press px-7 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-base rounded-2xl shadow-[0_4px_0_#064e3b]">
+                    🔄 Rematch (Swap Bat/Bowl)
+                </button>
+                <button onclick="exitToLobby()" class="btn-press px-7 py-3.5 bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-base rounded-2xl shadow-[0_4px_0_#0f172a]">
+                    🏠 Back to Lobby
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- =========================================================================
+         6. CLASSROOM TRIVIA POWER-UP MODAL (OPTIONAL MODE)
+         ========================================================================= -->
+    <div id="trivia-modal" class="hidden fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="sky-glass w-full max-w-xl rounded-3xl p-5 md:p-7">
+            <div class="flex items-center justify-between mb-3">
+                <span class="bg-amber-400 text-slate-950 font-extrabold text-xs uppercase px-3 py-1 rounded-full">🎓 Sky Trivia Power-Up</span>
+                <span class="text-xs font-bold text-slate-600">Answer right for 2X Power Bat!</span>
+            </div>
+            <h3 id="trivia-q-text" class="font-extrabold text-lg md:text-xl text-slate-900 bg-white/90 p-4 rounded-2xl border border-sky-200 mb-4">
+                Question text?
+            </h3>
+            <div id="trivia-options" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5"></div>
+            <p id="trivia-feedback" class="hidden mt-3 text-center font-extrabold text-sm"></p>
+        </div>
+    </div>
+
+    <!-- =========================================================================
+         7. WEBRTC IN-MATCH QUICK-CHAT DRAWER & EXIT CONFIRM MODAL
+         ========================================================================= -->
+    <div id="chat-drawer" class="hidden fixed right-3 bottom-24 z-30 w-72 dark-hud rounded-2xl p-3 text-white">
+        <div class="flex items-center justify-between border-b border-slate-700 pb-2 mb-2">
+            <span class="font-extrabold text-xs text-amber-300 uppercase">💬 Stadium P2P Chat</span>
+            <button onclick="toggleChatDrawer()" class="text-slate-400 hover:text-white text-xs font-bold">✕</button>
+        </div>
+        <div id="chat-messages" class="h-32 overflow-y-auto space-y-1.5 text-xs mb-2 pr-1">
+            <div class="text-slate-400 italic">Connected peer-to-peer! Say hello!</div>
+        </div>
+        <div class="flex flex-wrap gap-1 mb-2">
+            <button onclick="sendQuickChat('🔥 What a shot!')" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-[11px]">🔥 Shot!</button>
+            <button onclick="sendQuickChat('⚾ Unplayable ball!')" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-[11px]">⚾ Ripper!</button>
+            <button onclick="sendQuickChat('👏 Good game!')" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-[11px]">👏 GG!</button>
+        </div>
+        <form onsubmit="submitChatInput(event)" class="flex gap-1.5">
+            <input id="chat-input" type="text" maxlength="60" placeholder="Type message..." class="w-full px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-600 text-xs text-white focus:outline-none">
+            <button type="submit" class="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 rounded-lg text-xs font-bold">Send</button>
+        </form>
+    </div>
+
+    <div id="confirm-exit-modal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="sky-glass w-full max-w-sm rounded-3xl p-6 text-center">
+            <div class="text-4xl mb-2">🎈</div>
+            <h3 class="font-extrabold text-xl text-slate-900 mb-1">Leave Sky Stadium?</h3>
+            <p class="text-xs text-slate-600 font-medium mb-5">Your current match progress will end.</p>
+            <div class="flex gap-3 justify-center">
+                <button onclick="closeConfirmExit()" class="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 font-bold text-slate-800 text-sm">Stay</button>
+                <button onclick="exitToLobby()" class="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 font-bold text-white text-sm">Exit Match</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- =========================================================================
+         8. COMPLETE APPLICATION & 2.5D RENDERING ENGINE (SINGLE SCRIPT BLOCK)
+         ========================================================================= -->
+    <script>
+        /* ---------------------------------------------------------------------
+           A. WEB AUDIO SYNTHESIZER (CRICKET BAT CRACK, CROWD CHEER & STUMPS)
+           --------------------------------------------------------------------- */
+        const SFX = {
+            ctx: null,
+            muted: false,
+            init() {
+                if (!this.ctx) {
+                    const AC = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AC();
+                }
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+            },
+            tone(freq, type, dur, delay = 0, vol = 0.16) {
+                if (this.muted) return;
+                this.init();
+                const t = this.ctx.currentTime + delay;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, t);
+                gain.gain.setValueAtTime(vol, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(t);
+                osc.stop(t + dur);
+            },
+            pop() {
+                this.tone(620, 'sine', 0.09, 0, 0.12);
+            },
+            batCrack(power = 1) {
+                if (this.muted) return;
+                this.init();
+                const t = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(340 + power * 180, t);
+                osc.frequency.exponentialRampToValueAtTime(75, t + 0.14);
+                gain.gain.setValueAtTime(0.4, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(t);
+                osc.stop(t + 0.15);
+            },
+            stumpsRattle() {
+                this.tone(240, 'square', 0.12, 0, 0.22);
+                this.tone(490, 'triangle', 0.16, 0.05, 0.2);
+                this.tone(170, 'sawtooth', 0.25, 0.1, 0.18);
+            },
+            crowdRoar(isSix = false) {
+                if (this.muted) return;
+                this.init();
+                const dur = isSix ? 1.35 : 0.85;
+                const buf = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * dur), this.ctx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < data.length; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.sin((i / data.length) * Math.PI);
+                }
+                const src = this.ctx.createBufferSource();
+                src.buffer = buf;
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.value = 920;
+                const gain = this.ctx.createGain();
+                gain.gain.value = 0.28;
+                src.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                src.start();
+                if (isSix) {
+                    this.tone(523.25, 'triangle', 0.25, 0.05, 0.16);
+                    this.tone(659.25, 'triangle', 0.25, 0.18, 0.16);
+                    this.tone(783.99, 'triangle', 0.45, 0.32, 0.18);
+                }
+            }
+        };
+
+        function toggleSound() {
+            SFX.muted = !SFX.muted;
+            document.getElementById('sound-icon').className = SFX.muted
+                ? 'fa-solid fa-volume-xmark text-rose-500'
+                : 'fa-solid fa-volume-high text-sky-600';
+        }
+
+        /* ---------------------------------------------------------------------
+           B. CLASSROOM TRIVIA QUESTION BANK
+           --------------------------------------------------------------------- */
+        const TRIVIA_BANK = [
+            { q: "How many legal deliveries are bowled in one standard cricket over?", options: ["4 balls", "5 balls", "6 balls", "8 balls"], correct: 2 },
+            { q: "How many runs are awarded when a batter hits the ball over the boundary rope on the full?", options: ["2 runs", "4 runs", "6 runs", "8 runs"], correct: 2 },
+            { q: "What are the two small wooden pieces balanced on top of the three cricket stumps called?", options: ["Pegs", "Bails", "Pins", "Caps"], correct: 1 },
+            { q: "Which gas makes a blimp or dirigible float high in the sky safely without catching fire?", options: ["Oxygen", "Helium", "Carbon Dioxide", "Nitrogen"], correct: 1 },
+            { q: "How many players are on a standard cricket team on the field?", options: ["9 players", "10 players", "11 players", "12 players"], correct: 2 },
+            { q: "What is it called when a bowler takes 3 wickets in 3 consecutive balls?", options: ["Triple Play", "Hat-Trick", "Maiden Over", "Century"], correct: 1 },
+            { q: "How long is a standard cricket pitch between the two sets of stumps?", options: ["18 yards", "20 yards", "22 yards", "25 yards"], correct: 2 },
+            { q: "What is an over in which the batting team scores zero runs called?", options: ["Blank Over", "Maiden Over", "Golden Over", "Dot Over"], correct: 1 }
+        ];
+
+        /* ---------------------------------------------------------------------
+           C. APPLICATION & MATCH STATE
+           --------------------------------------------------------------------- */
+        const state = {
+            screen: 'LOBBY', // 'LOBBY' | 'MATCH'
+            mode: 'webrtc',  // 'webrtc' | 'local'
+            isHost: true,
+            peer: null,
+            conn: null,
+            roomCode: '',
+            pingInterval: null,
+
+            // Teams
+            team1: { name: 'Sky Striker', color: '#2563eb', runs: 0, wickets: 0, balls: 0 },
+            team2: { name: 'Opponent', color: '#e11d48', runs: 0, wickets: 0, balls: 0 },
+            oversPerInnings: 2,
+            maxWickets: 3,
+            innings: 1,         // 1 or 2
+            battingTeamNum: 1,  // 1 or 2
+            isSuperOver: false,
+            triviaRule: 'off',
+            localOpponent: 'pvp',
+
+            // Delivery & Shot Controls
+            myRole: 'BAT',      // 'BAT' | 'BOWL' | 'WAIT'
+            deliveryType: 'yorker',
+            shotDir: 'straight',
+            powerBatActive: false,
+            overHistory: [],
+
+            // Pitch Aiming Coordinates (normalized -1..1 width, 0..1 length)
+            aimX: 0.0,
+            aimY: 0.72,
+            swingCurve: 15
+        };
+
+        /* ---------------------------------------------------------------------
+           D. LOBBY UI & SCENIC PREVIEW TOGGLE
+           --------------------------------------------------------------------- */
+        function setLobbyTab(tab) {
+            SFX.pop();
+            state.mode = tab;
+            const isRtc = tab === 'webrtc';
+            document.getElementById('tab-webrtc').className = isRtc
+                ? "py-2.5 px-3 rounded-xl font-extrabold text-xs md:text-sm bg-sky-600 text-white shadow transition flex items-center justify-center gap-2"
+                : "py-2.5 px-3 rounded-xl font-extrabold text-xs md:text-sm text-slate-800 hover:bg-white/70 transition flex items-center justify-center gap-2";
+            document.getElementById('tab-local').className = !isRtc
+                ? "py-2.5 px-3 rounded-xl font-extrabold text-xs md:text-sm bg-sky-600 text-white shadow transition flex items-center justify-center gap-2"
+                : "py-2.5 px-3 rounded-xl font-extrabold text-xs md:text-sm text-slate-800 hover:bg-white/70 transition flex items-center justify-center gap-2";
+
+            document.getElementById('view-webrtc').classList.toggle('hidden', !isRtc);
+            document.getElementById('view-local').classList.toggle('hidden', isRtc);
+        }
+
+        function toggleScenicView() {
+            SFX.pop();
+            const lobby = document.getElementById('lobby-overlay');
+            const pill = document.getElementById('scenic-return-pill');
+            const icon = document.getElementById('scenic-icon');
+            const txt = document.getElementById('scenic-text');
+
+            const hiding = !lobby.classList.contains('hidden');
+            lobby.classList.toggle('hidden', hiding);
+            pill.classList.toggle('hidden', !hiding);
+            icon.className = hiding ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+            txt.textContent = hiding ? 'Show Lobby' : 'Scenic View';
+        }
+
+        function showLobbyToast(msg, isError = false) {
+            const el = document.getElementById('lobby-toast');
+            el.textContent = msg;
+            el.className = isError
+                ? "text-center text-xs font-extrabold text-rose-700 bg-rose-100 border border-rose-300 py-1.5 px-3 rounded-xl block"
+                : "text-center text-xs font-extrabold text-emerald-800 bg-emerald-100 border border-emerald-300 py-1.5 px-3 rounded-xl block";
+            setTimeout(() => el.classList.add('hidden'), 3200);
+        }
+
+        /* ---------------------------------------------------------------------
+           E. WEBRTC (PEERJS + SANDBOX BROADCASTCHANNEL FALLBACK) MULTIPLAYER
+           --------------------------------------------------------------------- */
+        let fallbackChannel = null;
+
+        function generateRoomCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let code = '';
+            for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+            return code;
+        }
+
+        function createFallbackChannel(roomCode, isHost) {
+            if (fallbackChannel) fallbackChannel.close();
+            if (typeof BroadcastChannel === 'undefined') return null;
+
+            const bc = new BroadcastChannel(`SKYBLIMP_ROOM_${roomCode}`);
+            const channelWrapper = {
+                open: true,
+                isFallback: true,
+                send(payload) {
+                    bc.postMessage(payload);
+                },
+                close() {
+                    this.open = false;
+                    bc.close();
+                }
+            };
+
+            bc.onmessage = (event) => {
+                if (!channelWrapper.open) return;
+                handlePeerMessage(event.data);
+            };
+
+            if (!isHost) {
+                setTimeout(() => {
+                    if (channelWrapper.open) {
+                        const myName = document.getElementById('rtc-player-name').value.trim() || 'Guest Challenger';
+                        const myColor = document.getElementById('rtc-player-kit').value;
+                        channelWrapper.send({
+                            type: 'GUEST_HELLO',
+                            guestTeam: { name: myName, color: myColor }
+                        });
+                    }
+                }, 150);
+            }
+
+            return channelWrapper;
+        }
+
+        function showHostRoomUI(isSandboxFallback = false) {
+            document.getElementById('host-create-box').classList.add('hidden');
+            document.getElementById('host-room-box').classList.remove('hidden');
+            document.getElementById('display-room-code').textContent = state.roomCode;
+
+            const url = new URL(window.location.href);
+            url.searchParams.set('room', state.roomCode);
+            document.getElementById('display-invite-link').value = url.toString();
+
+            const statusEl = document.getElementById('host-status-text');
+            statusEl.textContent = isSandboxFallback
+                ? 'Sandbox Tab-Link Active: Open another tab with this Room Code to join!'
+                : 'Waiting for opponent to join...';
+        }
+
+        function createWebRTCRoom() {
+            SFX.init();
+            SFX.pop();
+            state.isHost = true;
+            state.mode = 'webrtc';
+            state.roomCode = generateRoomCode();
+
+            const overs = parseInt(document.getElementById('rtc-overs').value, 10);
+            const toss = document.getElementById('rtc-toss').value;
+            const trivia = document.getElementById('rtc-trivia').value;
+            const myName = document.getElementById('rtc-player-name').value.trim() || 'Host Striker';
+            const myColor = document.getElementById('rtc-player-kit').value;
+
+            state.team1 = { name: myName, color: myColor, runs: 0, wickets: 0, balls: 0 };
+            state.oversPerInnings = overs;
+            state.triviaRule = trivia;
+            state.battingTeamNum = (toss === 'bat') ? 1 : 2;
+
+            // Always attach same-browser BroadcastChannel fallback so two tabs work even in restricted iframes
+            fallbackChannel = createFallbackChannel(state.roomCode, true);
+
+            const btn = document.getElementById('btn-create-room');
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Opening Sky Channel...`;
+
+            if (state.peer) {
+                try { state.peer.destroy(); } catch (e) {}
+                state.peer = null;
+            }
+
+            try {
+                if (typeof Peer === 'undefined') throw new Error('PeerJS unavailable');
+                const peerId = `SKYBLIMP-${state.roomCode}`;
+                state.peer = new Peer(peerId, {
+                    config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+                });
+
+                state.peer.on('open', () => {
+                    showHostRoomUI(false);
+                });
+
+                state.peer.on('connection', (conn) => {
+                    if (fallbackChannel) { fallbackChannel.close(); fallbackChannel = null; }
+                    state.conn = conn;
+                    setupPeerConnectionHandlers();
+                });
+
+                state.peer.on('error', () => {
+                    // Gracefully switch to sandbox BroadcastChannel mode without throwing unhandled errors
+                    state.conn = fallbackChannel;
+                    showHostRoomUI(true);
+                });
+            } catch (err) {
+                // Caught synchronous SecurityError when WebSockets are blocked by sandboxed Canvas iframe
+                state.conn = fallbackChannel;
+                showHostRoomUI(true);
+            }
+        }
+
+        function joinWebRTCRoom() {
+            SFX.init();
+            SFX.pop();
+            const rawCode = document.getElementById('input-join-code').value.trim().toUpperCase();
+            if (rawCode.length < 4) {
+                showLobbyToast("Please enter a valid 6-character Room Code!", true);
+                return;
+            }
+
+            state.isHost = false;
+            state.mode = 'webrtc';
+            state.roomCode = rawCode;
+
+            const btn = document.getElementById('btn-join-room');
+            const status = document.getElementById('join-status-text');
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Connecting...`;
+            status.textContent = `Dialing SkyBlimp Room ${rawCode}...`;
+            status.classList.remove('hidden');
+
+            // Connect local tab BroadcastChannel fallback immediately
+            fallbackChannel = createFallbackChannel(rawCode, false);
+
+            if (state.peer) {
+                try { state.peer.destroy(); } catch (e) {}
+                state.peer = null;
+            }
+
+            try {
+                if (typeof Peer === 'undefined') throw new Error('PeerJS unavailable');
+                state.peer = new Peer({
+                    config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+                });
+
+                state.peer.on('open', () => {
+                    const conn = state.peer.connect(`SKYBLIMP-${rawCode}`, { reliable: true });
+                    state.conn = conn;
+                    setupPeerConnectionHandlers();
+                });
+
+                state.peer.on('error', () => {
+                    state.conn = fallbackChannel;
+                    status.textContent = "Sandbox Tab-Link active! Waiting for host tab response...";
+                });
+            } catch (err) {
+                // Caught synchronous SecurityError when WebSockets are blocked by sandboxed Canvas iframe
+                state.conn = fallbackChannel;
+                status.textContent = "Sandbox Tab-Link active! Connecting to host tab...";
+            }
+        }
+
+        function setupPeerConnectionHandlers() {
+            const conn = state.conn;
+            conn.on('open', () => {
+                startConnectionHeartbeat();
+
+                const myName = document.getElementById('rtc-player-name').value.trim() || (state.isHost ? 'Host Striker' : 'Guest Challenger');
+                const myColor = document.getElementById('rtc-player-kit').value;
+
+                if (state.isHost) {
+                    const overs = parseInt(document.getElementById('rtc-overs').value, 10);
+                    const toss = document.getElementById('rtc-toss').value;
+                    const trivia = document.getElementById('rtc-trivia').value;
+
+                    state.team1 = { name: myName, color: myColor, runs: 0, wickets: 0, balls: 0 };
+                    state.oversPerInnings = overs;
+                    state.triviaRule = trivia;
+                    state.battingTeamNum = (toss === 'bat') ? 1 : 2;
+
+                    conn.send({
+                        type: 'INIT_MATCH',
+                        hostTeam: { name: myName, color: myColor },
+                        overs,
+                        battingTeamNum: state.battingTeamNum,
+                        trivia
+                    });
+                } else {
+                    conn.send({
+                        type: 'GUEST_HELLO',
+                        guestTeam: { name: myName, color: myColor }
+                    });
+                }
+            });
+
+            conn.on('data', (msg) => handlePeerMessage(msg));
+
+            conn.on('close', () => {
+                appendChatMessage('System', 'Opponent disconnected from the sky stadium.', true);
+            });
+        }
+
+        function startConnectionHeartbeat() {
+            document.getElementById('ping-badge').classList.remove('hidden');
+            document.getElementById('ping-badge').classList.add('flex');
+            if (state.pingInterval) clearInterval(state.pingInterval);
+            state.pingInterval = setInterval(() => {
+                if (state.conn && state.conn.open) {
+                    state.conn.send({ type: 'PING', ts: Date.now() });
+                }
+            }, 2500);
+        }
+
+        function handlePeerMessage(msg) {
+            if (!msg || !msg.type) return;
+            switch (msg.type) {
+                case 'PING':
+                    if (state.conn && state.conn.open) state.conn.send({ type: 'PONG', ts: msg.ts });
+                    break;
+                case 'PONG':
+                    document.getElementById('ping-text').textContent = state.conn && state.conn.isFallback
+                        ? `Tab-P2P ${Math.max(1, Date.now() - msg.ts)}ms`
+                        : `P2P ${Math.max(8, Date.now() - msg.ts)}ms`;
+                    break;
+                case 'GUEST_HELLO':
+                    if (!state.isHost) return;
+                    if (!state.conn && fallbackChannel) state.conn = fallbackChannel;
+                    startConnectionHeartbeat();
+                    state.team2 = { name: msg.guestTeam.name, color: msg.guestTeam.color, runs: 0, wickets: 0, balls: 0 };
+                    state.conn.send({
+                        type: 'SYNC_TEAMS',
+                        team1: state.team1,
+                        team2: state.team2,
+                        overs: state.oversPerInnings,
+                        battingTeamNum: state.battingTeamNum,
+                        trivia: state.triviaRule
+                    });
+                    beginLiveMatch();
+                    break;
+                case 'INIT_MATCH':
+                    state.team1 = { ...msg.hostTeam, runs: 0, wickets: 0, balls: 0 };
+                    state.oversPerInnings = msg.overs;
+                    state.battingTeamNum = msg.battingTeamNum;
+                    state.triviaRule = msg.trivia;
+                    break;
+                case 'SYNC_TEAMS':
+                    if (!state.conn && fallbackChannel) state.conn = fallbackChannel;
+                    startConnectionHeartbeat();
+                    state.team1 = msg.team1;
+                    state.team2 = msg.team2;
+                    state.oversPerInnings = msg.overs;
+                    state.battingTeamNum = msg.battingTeamNum;
+                    state.triviaRule = msg.trivia;
+                    beginLiveMatch();
+                    break;
+                case 'AIM_UPDATE':
+                    state.aimX = msg.aimX;
+                    state.aimY = msg.aimY;
+                    state.deliveryType = msg.deliveryType;
+                    break;
+                case 'BOWL_DELIVERY':
+                    state.aimX = msg.aimX;
+                    state.aimY = msg.aimY;
+                    state.deliveryType = msg.deliveryType;
+                    state.swingCurve = msg.swingCurve;
+                    sim.windKmh = msg.windKmh;
+                    startBallFlightAnimation();
+                    break;
+                case 'BAT_SWING':
+                    state.shotDir = msg.shotDir;
+                    triggerBatSwingPhysics(msg.timingRatio, msg.powerBat);
+                    break;
+                case 'CHAT':
+                    appendChatMessage(msg.sender, msg.text, false);
+                    break;
+                case 'REMATCH':
+                    resetMatchStats(true);
+                    break;
+            }
+        }
+
+        function copyRoomCode() {
+            copyTextFallback(state.roomCode);
+            showLobbyToast(`Copied Room Code: ${state.roomCode}`);
+        }
+
+        function copyInviteLink() {
+            const link = document.getElementById('display-invite-link').value;
+            copyTextFallback(link);
+            showLobbyToast("Invite Link copied! Send it to your opponent.");
+        }
+
+        function copyTextFallback(str) {
+            const ta = document.createElement('textarea');
+            ta.value = str;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+
+        function checkInviteUrlParam() {
+            const params = new URLSearchParams(window.location.search);
+            const roomParam = params.get('room');
+            if (roomParam) {
+                setLobbyTab('webrtc');
+                document.getElementById('input-join-code').value = roomParam.toUpperCase().slice(0, 6);
+                showLobbyToast(`Invite Link detected for Room ${roomParam.toUpperCase()}! Enter your name & click Connect.`);
+            }
+        }
+
+        /* ---------------------------------------------------------------------
+           F. LOCAL PASS & PLAY / AI MATCH LAUNCHER
+           --------------------------------------------------------------------- */
+        function startLocalMatch() {
+            SFX.init();
+            SFX.pop();
+            state.mode = 'local';
+            state.isHost = true;
+            state.team1 = {
+                name: document.getElementById('local-t1-name').value.trim() || 'Cloud Strikers',
+                color: document.getElementById('local-t1-kit').value,
+                runs: 0, wickets: 0, balls: 0
+            };
+            state.team2 = {
+                name: document.getElementById('local-t2-name').value.trim() || 'Blimp Blazers',
+                color: document.getElementById('local-t2-kit').value,
+                runs: 0, wickets: 0, balls: 0
+            };
+            state.oversPerInnings = parseInt(document.getElementById('local-overs').value, 10);
+            state.localOpponent = document.getElementById('local-opponent').value;
+            state.triviaRule = document.getElementById('local-trivia').value;
+            state.battingTeamNum = 1;
+
+            beginLiveMatch();
+        }
+
+        /* ---------------------------------------------------------------------
+           G. LIVE CRICKET MATCH FLOW, BOWLING, BATTING & RULES ENGINE
+           --------------------------------------------------------------------- */
+        function beginLiveMatch() {
+            state.screen = 'MATCH';
+            state.innings = 1;
+            state.isSuperOver = false;
+            state.overHistory = [];
+            state.powerBatActive = false;
+
+            document.getElementById('lobby-overlay').classList.add('hidden');
+            document.getElementById('scenic-return-pill').classList.add('hidden');
+            document.getElementById('btn-scenic').classList.add('hidden');
+            document.getElementById('innings-modal').classList.add('hidden');
+            document.getElementById('victory-modal').classList.add('hidden');
+            document.getElementById('match-hud').classList.remove('hidden');
+            document.getElementById('btn-exit-match').classList.remove('hidden');
+            document.getElementById('btn-exit-match').classList.add('flex');
+
+            if (state.mode === 'webrtc') {
+                document.getElementById('btn-chat-toggle').classList.remove('hidden');
+                document.getElementById('btn-chat-toggle').classList.add('flex');
+            }
+
+            prepareNextDelivery();
+        }
+
+        function prepareNextDelivery() {
+            sim.phase = 'AIMING';
+            sim.ball.active = false;
+            sim.bailsFlying = false;
+            sim.bowlerRun = 0;
+            sim.batterSwing = 0;
+            sim.windKmh = Math.floor(Math.random() * 29) - 14; // -14 to +14 km/h high-altitude breeze
+
+            // Determine local player's active role
+            if (state.mode === 'webrtc') {
+                const amITeam1 = state.isHost;
+                const isTeam1Batting = (state.battingTeamNum === 1);
+                state.myRole = (amITeam1 === isTeam1Batting) ? 'BAT' : 'BOWL';
+            } else {
+                // Local mode
+                if (state.localOpponent === 'ai') {
+                    state.myRole = (state.battingTeamNum === 1) ? 'BAT' : 'BOWL';
+                } else {
+                    state.myRole = 'BOTH'; // Pass & Play shows bowler first, then switches to batter on release!
+                }
+            }
+
+            updateScoreboardHUD();
+            updateActiveControlsUI();
+
+            // Check if Classroom Trivia Power-Up triggers before this delivery
+            const batTeam = state.battingTeamNum === 1 ? state.team1 : state.team2;
+            const interval = state.triviaRule === 'every2' ? 2 : (state.triviaRule === 'every3' ? 3 : 0);
+            if (interval > 0 && batTeam.balls > 0 && batTeam.balls % interval === 0 && !state.powerBatActive) {
+                if (state.myRole === 'BAT' || state.myRole === 'BOTH') {
+                    openTriviaPowerUpModal();
+                    return;
+                }
+            }
+
+            // If playing vs AI and AI is bowling, auto-bowl after short pause
+            if (state.mode === 'local' && state.localOpponent === 'ai' && state.battingTeamNum === 1) {
+                setTimeout(() => {
+                    if (sim.phase === 'AIMING') {
+                        const types = ['yorker', 'swing', 'spin', 'bouncer'];
+                        state.deliveryType = types[Math.floor(Math.random() * types.length)];
+                        state.aimX = (Math.random() - 0.5) * 0.55;
+                        state.aimY = 0.55 + Math.random() * 0.35;
+                        state.swingCurve = Math.floor(Math.random() * 80) - 40;
+                        startBallFlightAnimation();
+                    }
+                }, 1100);
+            }
+        }
+
+        function updateActiveControlsUI() {
+            const cBowl = document.getElementById('controls-bowler');
+            const cBat = document.getElementById('controls-batter');
+            const cWait = document.getElementById('controls-waiting');
+
+            cBowl.classList.add('hidden');
+            cBat.classList.add('hidden');
+            cWait.classList.add('hidden');
+
+            document.getElementById('power-bat-pill').classList.toggle('hidden', !state.powerBatActive);
+
+            if (state.myRole === 'BOWL' || (state.myRole === 'BOTH' && sim.phase === 'AIMING')) {
+                cBowl.classList.remove('hidden');
+                document.getElementById('btn-bowl-now').disabled = false;
+            } else if (state.myRole === 'BAT') {
+                cBat.classList.remove('hidden');
+                document.getElementById('btn-swing-now').disabled = false;
+                document.getElementById('batter-status-msg').textContent = sim.phase === 'AIMING'
+                    ? "Bowler is aiming... Pick your shot angle & get ready!"
+                    : "BALL IN FLIGHT! Press SPACEBAR or SWING when the bar hits GREEN!";
+            } else {
+                cWait.classList.remove('hidden');
+                document.getElementById('waiting-role-text').textContent = "Opponent is aiming their delivery on the sky pitch...";
+            }
+        }
+
+        function selectDeliveryType(type) {
+            SFX.pop();
+            state.deliveryType = type;
+            ['yorker', 'swing', 'spin', 'bouncer'].forEach(t => {
+                const btn = document.getElementById(`deliv-${t}`);
+                btn.className = (t === type)
+                    ? "deliv-btn py-2 px-2.5 rounded-xl border-2 border-amber-400 bg-amber-500/25 font-bold text-xs text-left"
+                    : "deliv-btn py-2 px-2.5 rounded-xl border-2 border-slate-600 bg-slate-800/80 hover:border-sky-400 font-bold text-xs text-left";
+            });
+            syncBowlerAim();
+        }
+
+        function selectShotDirection(dir) {
+            SFX.pop();
+            state.shotDir = dir;
+            ['off', 'straight', 'leg', 'defend'].forEach(d => {
+                const btn = document.getElementById(`shot-${d}`);
+                btn.className = (d === dir)
+                    ? "shot-btn py-2 px-2.5 rounded-xl border-2 border-amber-400 bg-amber-500/25 font-bold text-xs text-left"
+                    : "shot-btn py-2 px-2.5 rounded-xl border-2 border-slate-600 bg-slate-800/80 hover:border-sky-400 font-bold text-xs text-left";
+            });
+        }
+
+        function syncBowlerAim() {
+            if (state.mode === 'webrtc' && state.conn && state.conn.open && state.myRole === 'BOWL') {
+                state.conn.send({
+                    type: 'AIM_UPDATE',
+                    aimX: state.aimX,
+                    aimY: state.aimY,
+                    deliveryType: state.deliveryType
+                });
+            }
+        }
+
+        function executeBowlDelivery() {
+            if (sim.phase !== 'AIMING') return;
+            SFX.pop();
+            state.swingCurve = parseInt(document.getElementById('bowl-swing-slider').value, 10);
+
+            if (state.mode === 'webrtc' && state.conn && state.conn.open) {
+                state.conn.send({
+                    type: 'BOWL_DELIVERY',
+                    aimX: state.aimX,
+                    aimY: state.aimY,
+                    deliveryType: state.deliveryType,
+                    swingCurve: state.swingCurve,
+                    windKmh: sim.windKmh
+                });
+            }
+
+            // In Pass & Play local mode, hand control over to Batter immediately as bowler runs in
+            if (state.mode === 'local' && state.localOpponent === 'pvp') {
+                state.myRole = 'BAT';
+            }
+
+            startBallFlightAnimation();
+        }
+
+        function startBallFlightAnimation() {
+            sim.phase = 'BOWLING';
+            sim.bowlerRun = 0;
+            sim.ball.active = true;
+            sim.ball.progress = 0;
+            sim.ball.hit = false;
+            sim.ball.trail = [];
+
+            const speedMap = { yorker: 0.021, swing: 0.0185, spin: 0.0155, bouncer: 0.020 };
+            sim.ball.speed = speedMap[state.deliveryType] || 0.0185;
+            updateActiveControlsUI();
+
+            // If AI is batting in local mode, schedule AI swing
+            if (state.mode === 'local' && state.localOpponent === 'ai' && state.battingTeamNum === 2) {
+                const aiDelay = Math.floor((0.83 / sim.ball.speed) * 16.6);
+                setTimeout(() => {
+                    if (sim.phase === 'BOWLING' && !sim.ball.hit) {
+                        const dirs = ['off', 'straight', 'leg', 'defend'];
+                        state.shotDir = dirs[Math.floor(Math.random() * dirs.length)];
+                        const simTiming = 0.72 + Math.random() * 0.26;
+                        triggerBatSwingPhysics(simTiming, false);
+                    }
+                }, aiDelay);
+            }
+        }
+
+        function executeBatSwing() {
+            if (sim.phase !== 'BOWLING' || sim.ball.hit) return;
+            // Ideal contact window is around progress = 0.86
+            const timingRatio = sim.ball.progress;
+            const usedPower = state.powerBatActive;
+            state.powerBatActive = false;
+
+            if (state.mode === 'webrtc' && state.conn && state.conn.open) {
+                state.conn.send({
+                    type: 'BAT_SWING',
+                    shotDir: state.shotDir,
+                    timingRatio,
+                    powerBat: usedPower
+                });
+            }
+
+            triggerBatSwingPhysics(timingRatio, usedPower);
+        }
+
+        function triggerBatSwingPhysics(timingRatio, hasPowerBat) {
+            sim.batterSwing = 1.0;
+
+            // Check if delivery is a Wide (outside off/leg tramline)
+            const totalLat = state.aimX + (state.swingCurve / 220) + (sim.windKmh / 90);
+            if (Math.abs(totalLat) > 0.78 && timingRatio < 0.65) {
+                return; // Wait for ball to pass keeper as wide
+            }
+
+            const delta = Math.abs(timingRatio - 0.86);
+            if (delta <= 0.16) {
+                // Clean Bat Contact!
+                sim.ball.hit = true;
+                sim.phase = 'HIT_FLIGHT';
+                sim.ball.hitProgress = 0;
+
+                const quality = 1 - (delta / 0.16); // 0..1 (1 = dead center)
+                const powerMult = hasPowerBat ? 1.35 : 1.0;
+                SFX.batCrack(quality * powerMult);
+
+                // Determine Shot Outcome (6, 4, 2, 1, or Caught)
+                let runs = 1;
+                let isOut = false;
+                let label = "QUICK SINGLE! +1";
+                let sub = "Sharp running between the sky wickets!";
+                let emoji = "🏃‍♂️🏏";
+
+                if (state.shotDir === 'defend') {
+                    runs = quality > 0.55 ? 2 : 1;
+                    label = runs === 2 ? "PLACED FOR TWO! +2" : "SMART SINGLE! +1";
+                    sub = "Worked safely into the gap on the aerial turf.";
+                } else if (quality * powerMult >= 0.76) {
+                    runs = 6;
+                    label = "SKY-HIGH SIX! +6 RUNS!";
+                    sub = "Smashed clean over the balloon platform into the clouds!";
+                    emoji = "🚀💥";
+                    SFX.crowdRoar(true);
+                } else if (quality * powerMult >= 0.45) {
+                    runs = 4;
+                    label = "CRACKING FOUR! +4 RUNS!";
+                    sub = "Raced across the emerald sky turf to the boundary rope!";
+                    emoji = "⚡🏏";
+                    SFX.crowdRoar(false);
+                } else if (quality < 0.18 && Math.random() < 0.55) {
+                    isOut = true;
+                    runs = 0;
+                    label = "CAUGHT IN THE DEEP! WICKET!";
+                    sub = "Skied high into the stratosphere wind and safely taken!";
+                    emoji = "🙌🧤";
+                    SFX.stumpsRattle();
+                } else {
+                    runs = 2;
+                    label = "GOOD RUNNING! +2 RUNS";
+                    sub = "Pushed into the deep outfield for a brace.";
+                }
+
+                // Set outgoing ball trajectory angle
+                const dirAngles = { off: -0.65, straight: 0.0, leg: 0.65, defend: 0.25 };
+                sim.ball.outAngle = (dirAngles[state.shotDir] || 0) + (Math.random() - 0.5) * 0.2;
+                sim.ball.outDistance = runs === 6 ? 1.35 : (runs === 4 ? 1.05 : 0.62);
+
+                setTimeout(() => {
+                    concludeDelivery(runs, isOut, false, label, sub, emoji);
+                }, 1150);
+            }
+        }
+
+        function evaluateUnplayedDelivery() {
+            const totalLat = state.aimX + (state.swingCurve / 220) + (sim.windKmh / 90);
+
+            // Wide ball check
+            if (Math.abs(totalLat) > 0.76) {
+                SFX.pop();
+                concludeDelivery(1, false, true, "WIDE BALL! +1 EXTRA", "Drifted outside the tramline in the high-altitude wind.", "🙆‍♂️🌬️");
+                return;
+            }
+
+            // Clean Bowled check (ball hits the stumps!)
+            if (Math.abs(totalLat) <= 0.26 && state.aimY >= 0.52) {
+                sim.bailsFlying = true;
+                SFX.stumpsRattle();
+                concludeDelivery(0, true, false, "CLEAN BOWLED! WICKET!", "Timber! The bails go flying into the sky breeze!", "🎯🔥");
+                return;
+            }
+
+            // Dot ball past the wicketkeeper
+            SFX.pop();
+            concludeDelivery(0, false, false, "DOT BALL! NO RUN", "Beaten outside off stump—through to the wicketkeeper.", "🧤⚾");
+        }
+
+        function concludeDelivery(runs, isWicket, isWide, title, sub, emoji) {
+            if (sim.phase === 'RESULT') return;
+            sim.phase = 'RESULT';
+
+            const batTeam = state.battingTeamNum === 1 ? state.team1 : state.team2;
+            batTeam.runs += runs;
+            if (isWicket) batTeam.wickets += 1;
+            if (!isWide) batTeam.balls += 1;
+
+            const badgeText = isWide ? 'WD' : (isWicket ? 'W' : String(runs));
+            state.overHistory.push(badgeText);
+            if (state.overHistory.length > 6) state.overHistory.shift();
+
+            updateScoreboardHUD();
+            showDeliveryCallout(title, sub, emoji, isWicket ? 'wicket' : (runs >= 4 ? 'boundary' : 'normal'));
+
+            setTimeout(() => {
+                document.getElementById('delivery-callout').classList.add('hidden');
+                checkInningsOrMatchCompletion();
+            }, 1900);
+        }
+
+        function showDeliveryCallout(title, sub, emoji, variant) {
+            const wrap = document.getElementById('delivery-callout');
+            const card = document.getElementById('callout-card');
+            document.getElementById('callout-emoji').textContent = emoji;
+            document.getElementById('callout-title').textContent = title;
+            document.getElementById('callout-sub').textContent = sub;
+
+            if (variant === 'boundary') {
+                card.className = "px-8 py-4 rounded-3xl border-4 border-amber-300 shadow-2xl text-center bg-gradient-to-r from-emerald-700 to-teal-800";
+            } else if (variant === 'wicket') {
+                card.className = "px-8 py-4 rounded-3xl border-4 border-rose-300 shadow-2xl text-center bg-gradient-to-r from-rose-700 to-red-900";
+            } else {
+                card.className = "px-8 py-4 rounded-3xl border-4 border-white shadow-2xl text-center bg-slate-900/95";
+            }
+            wrap.classList.remove('hidden');
+        }
+
+        function checkInningsOrMatchCompletion() {
+            const batTeam = state.battingTeamNum === 1 ? state.team1 : state.team2;
+            const bowlTeam = state.battingTeamNum === 1 ? state.team2 : state.team1;
+            const maxBalls = state.isSuperOver ? 6 : state.oversPerInnings * 6;
+            const maxWkts = state.isSuperOver ? 2 : state.maxWickets;
+
+            // In 2nd innings, check if target chased immediately
+            if (state.innings === 2 && batTeam.runs > bowlTeam.runs) {
+                showVictoryModal();
+                return;
+            }
+
+            const inningsEnded = (batTeam.balls >= maxBalls) || (batTeam.wickets >= maxWkts);
+            if (!inningsEnded) {
+                if (batTeam.balls % 6 === 0 && batTeam.balls > 0) state.overHistory = [];
+                prepareNextDelivery();
+                return;
+            }
+
+            if (state.innings === 1) {
+                // Show Innings Break Modal
+                const target = batTeam.runs + 1;
+                document.getElementById('innings-headline').textContent = "1st Innings Complete!";
+                document.getElementById('innings-summary').textContent =
+                    `${batTeam.name} posted ${batTeam.runs}/${batTeam.wickets}. ${bowlTeam.name} need ${target} runs in ${state.isSuperOver ? 1 : state.oversPerInnings} over(s)!`;
+                document.getElementById('innings-modal').classList.remove('hidden');
+            } else {
+                // Check for tie -> Trigger 1-Over Super Over!
+                if (state.team1.runs === state.team2.runs && !state.isSuperOver) {
+                    state.isSuperOver = true;
+                    state.innings = 1;
+                    state.team1.runs = 0; state.team1.wickets = 0; state.team1.balls = 0;
+                    state.team2.runs = 0; state.team2.wickets = 0; state.team2.balls = 0;
+                    state.overHistory = [];
+                    showDeliveryCallout("🔥 SUPER OVER TIE-BREAKER!", "Scores tied! 1 Over per side to crown the Sky Champion!", "⚡🏆", "boundary");
+                    setTimeout(() => {
+                        document.getElementById('delivery-callout').classList.add('hidden');
+                        prepareNextDelivery();
+                    }, 2200);
+                    return;
+                }
+                showVictoryModal();
+            }
+        }
+
+        function startSecondInnings() {
+            SFX.pop();
+            document.getElementById('innings-modal').classList.add('hidden');
+            state.innings = 2;
+            state.battingTeamNum = state.battingTeamNum === 1 ? 2 : 1;
+            state.overHistory = [];
+            state.powerBatActive = false;
+            prepareNextDelivery();
+        }
+
+        function updateScoreboardHUD() {
+            const batTeam = state.battingTeamNum === 1 ? state.team1 : state.team2;
+            const bowlTeam = state.battingTeamNum === 1 ? state.team2 : state.team1;
+            const totalOvers = state.isSuperOver ? 1 : state.oversPerInnings;
+
+            document.getElementById('hud-bat-badge').style.backgroundColor = batTeam.color;
+            document.getElementById('hud-bat-name').textContent = batTeam.name;
+            document.getElementById('hud-innings-pill').textContent = state.isSuperOver
+                ? "SUPER OVER"
+                : (state.innings === 1 ? "1st Innings" : "2nd Innings");
+            document.getElementById('hud-score-wickets').textContent = `${batTeam.runs}/${batTeam.wickets}`;
+
+            const ovStr = `${Math.floor(batTeam.balls / 6)}.${batTeam.balls % 6}`;
+            document.getElementById('hud-overs-text').textContent = `(${ovStr} / ${totalOvers}.0 Ov)`;
+            document.getElementById('hud-bowl-team').textContent = `Bowling: ${bowlTeam.name}`;
+
+            const windDir = sim.windKmh === 0 ? 'Calm' : (sim.windKmh > 0 ? `${sim.windKmh} km/h ➔` : `⬅ ${Math.abs(sim.windKmh)} km/h`);
+            document.getElementById('hud-wind-text').textContent = `🌬️ Wind: ${windDir}`;
+
+            if (state.innings === 1) {
+                document.getElementById('hud-target-banner').textContent = `Setting ${totalOvers}-Over Sky Target`;
+            } else {
+                const need = Math.max(0, (bowlTeam.runs + 1) - batTeam.runs);
+                const ballsLeft = (totalOvers * 6) - batTeam.balls;
+                document.getElementById('hud-target-banner').textContent = `Need ${need} runs off ${ballsLeft} ball${ballsLeft === 1 ? '' : 's'}`;
+            }
+
+            // Update 6-ball timeline pills
+            const timelineEl = document.getElementById('hud-ball-timeline');
+            let pillsHtml = '';
+            for (let i = 0; i < 6; i++) {
+                const val = state.overHistory[i];
+                if (!val) {
+                    pillsHtml += `<span class="w-7 h-7 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-xs font-bold text-slate-500">•</span>`;
+                } else if (val === 'W') {
+                    pillsHtml += `<span class="w-7 h-7 rounded-full bg-rose-600 border border-white flex items-center justify-center text-xs font-black text-white">W</span>`;
+                } else if (val === '6' || val === '4') {
+                    pillsHtml += `<span class="w-7 h-7 rounded-full bg-emerald-500 border border-white flex items-center justify-center text-xs font-black text-slate-950">${val}</span>`;
+                } else {
+                    pillsHtml += `<span class="w-7 h-7 rounded-full bg-sky-600 border border-sky-300 flex items-center justify-center text-xs font-extrabold text-white">${val}</span>`;
+                }
+            }
+            timelineEl.innerHTML = pillsHtml;
+        }
+
+        function showVictoryModal() {
+            SFX.crowdRoar(true);
+            document.getElementById('vic-t1-name').textContent = state.team1.name;
+            document.getElementById('vic-t1-score').textContent = `${state.team1.runs}/${state.team1.wickets}`;
+            document.getElementById('vic-t2-name').textContent = state.team2.name;
+            document.getElementById('vic-t2-score').textContent = `${state.team2.runs}/${state.team2.wickets}`;
+
+            const head = document.getElementById('victory-headline');
+            const sub = document.getElementById('victory-subtext');
+            if (state.team1.runs > state.team2.runs) {
+                head.textContent = `🏆 ${state.team1.name} Win!`;
+                sub.textContent = `Champions of the SkyBlimp Arena by ${state.team1.runs - state.team2.runs} run(s)!`;
+            } else if (state.team2.runs > state.team1.runs) {
+                head.textContent = `🏆 ${state.team2.name} Win!`;
+                sub.textContent = `Champions of the SkyBlimp Arena by ${state.team2.runs - state.team1.runs} run(s)!`;
+            } else {
+                head.textContent = "🤝 Epic Aerial Tie!";
+                sub.textContent = "Both teams finished dead even high above the clouds!";
+            }
+            document.getElementById('victory-modal').classList.remove('hidden');
+        }
+
+        function requestRematch() {
+            if (state.mode === 'webrtc' && state.conn && state.conn.open) {
+                state.conn.send({ type: 'REMATCH' });
+            }
+            resetMatchStats(true);
+        }
+
+        function resetMatchStats(swapOrder) {
+            state.team1.runs = 0; state.team1.wickets = 0; state.team1.balls = 0;
+            state.team2.runs = 0; state.team2.wickets = 0; state.team2.balls = 0;
+            if (swapOrder) state.battingTeamNum = state.battingTeamNum === 1 ? 2 : 1;
+            beginLiveMatch();
+        }
+
+        /* ---------------------------------------------------------------------
+           H. CLASSROOM TRIVIA MODAL & CHAT DRAWER
+           --------------------------------------------------------------------- */
+        function openTriviaPowerUpModal() {
+            const qObj = TRIVIA_BANK[Math.floor(Math.random() * TRIVIA_BANK.length)];
+            document.getElementById('trivia-q-text').textContent = qObj.q;
+            document.getElementById('trivia-feedback').classList.add('hidden');
+
+            const letters = ['A', 'B', 'C', 'D'];
+            document.getElementById('trivia-options').innerHTML = qObj.options.map((opt, idx) => `
+                <button onclick="answerTriviaPowerUp(${idx}, ${qObj.correct})" class="p-3 rounded-xl bg-white hover:bg-sky-50 border-2 border-slate-200 hover:border-sky-500 text-left font-bold text-sm flex items-center gap-2.5 transition">
+                    <span class="w-7 h-7 rounded-lg bg-sky-600 text-white font-extrabold flex items-center justify-center text-xs">${letters[idx]}</span>
+                    <span>${opt}</span>
+                </button>
+            `).join('');
+
+            document.getElementById('trivia-modal').classList.remove('hidden');
+        }
+
+        function answerTriviaPowerUp(chosen, correct) {
+            const fb = document.getElementById('trivia-feedback');
+            fb.classList.remove('hidden');
+            if (chosen === correct) {
+                SFX.crowdRoar(false);
+                state.powerBatActive = true;
+                fb.textContent = "🎉 CORRECT! 2X POWER BAT UNLOCKED FOR THIS BALL!";
+                fb.className = "mt-3 text-center font-extrabold text-sm text-emerald-700";
+            } else {
+                SFX.pop();
+                fb.textContent = "Not quite! Standard bat active—watch the ball closely!";
+                fb.className = "mt-3 text-center font-extrabold text-sm text-rose-600";
+            }
+            setTimeout(() => {
+                document.getElementById('trivia-modal').classList.add('hidden');
+                updateActiveControlsUI();
+            }, 1150);
+        }
+
+        function toggleChatDrawer() {
+            const drawer = document.getElementById('chat-drawer');
+            drawer.classList.toggle('hidden');
+            document.getElementById('chat-unread-dot').classList.add('hidden');
+        }
+
+        function sendQuickChat(text) {
+            const myName = state.isHost ? state.team1.name : state.team2.name;
+            appendChatMessage(myName, text, true);
+            if (state.conn && state.conn.open) {
+                state.conn.send({ type: 'CHAT', sender: myName, text });
+            }
+        }
+
+        function submitChatInput(e) {
+            e.preventDefault();
+            const inp = document.getElementById('chat-input');
+            const val = inp.value.trim();
+            if (!val) return;
+            inp.value = '';
+            sendQuickChat(val);
+        }
+
+        function appendChatMessage(sender, text, isSelf) {
+            const box = document.getElementById('chat-messages');
+            const div = document.createElement('div');
+            div.className = isSelf ? 'text-sky-300' : 'text-amber-300';
+            div.innerHTML = `<strong class="font-extrabold">${sender}:</strong> <span class="text-white">${text}</span>`;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+
+            if (!isSelf && document.getElementById('chat-drawer').classList.contains('hidden')) {
+                document.getElementById('chat-unread-dot').classList.remove('hidden');
+            }
+        }
+
+        function openConfirmExit() {
+            document.getElementById('confirm-exit-modal').classList.remove('hidden');
+        }
+        function closeConfirmExit() {
+            document.getElementById('confirm-exit-modal').classList.add('hidden');
+        }
+        function exitToLobby() {
+            closeConfirmExit();
+            if (state.pingInterval) clearInterval(state.pingInterval);
+            if (fallbackChannel) { fallbackChannel.close(); fallbackChannel = null; }
+            if (state.conn) { try { state.conn.close(); } catch (e) {} state.conn = null; }
+            if (state.peer) { try { state.peer.destroy(); } catch (e) {} state.peer = null; }
+
+            state.screen = 'LOBBY';
+            sim.phase = 'IDLE';
+            sim.ball.active = false;
+
+            document.getElementById('match-hud').classList.add('hidden');
+            document.getElementById('victory-modal').classList.add('hidden');
+            document.getElementById('innings-modal').classList.add('hidden');
+            document.getElementById('trivia-modal').classList.add('hidden');
+            document.getElementById('chat-drawer').classList.add('hidden');
+            document.getElementById('btn-exit-match').classList.add('hidden');
+            document.getElementById('btn-chat-toggle').classList.add('hidden');
+            document.getElementById('ping-badge').classList.add('hidden');
+
+            document.getElementById('host-create-box').classList.remove('hidden');
+            document.getElementById('host-room-box').classList.add('hidden');
+            document.getElementById('btn-create-room').disabled = false;
+            document.getElementById('btn-create-room').innerHTML = `<i class="fa-solid fa-plus-circle"></i> Create Room & Invite Link`;
+            document.getElementById('btn-join-room').disabled = false;
+            document.getElementById('btn-join-room').innerHTML = `<i class="fa-solid fa-bolt"></i> Connect & Play Live`;
+
+            document.getElementById('btn-scenic').classList.remove('hidden');
+            document.getElementById('lobby-overlay').classList.remove('hidden');
+        }
+
+        /* ---------------------------------------------------------------------
+           I. LIVE 60FPS 2.5D GAS-BALLOON STADIUM & CRICKET PHYSICS CANVAS
+           --------------------------------------------------------------------- */
+        const canvas = document.getElementById('stadium-canvas');
+        const ctx = canvas.getContext('2d');
+
+        const sim = {
+            tick: 0,
+            propAngle: 0,
+            windKmh: 8,
+            phase: 'IDLE', // 'IDLE' | 'AIMING' | 'BOWLING' | 'HIT_FLIGHT' | 'RESULT'
+            bowlerRun: 0,
+            batterSwing: 0,
+            bailsFlying: false,
+            ball: {
+                active: false,
+                progress: 0,
+                speed: 0.018,
+                hit: false,
+                hitProgress: 0,
+                outAngle: 0,
+                outDistance: 1,
+                trail: []
+            },
+            birds: [
+                { x: 0.15, y: 0.22, spd: 0.0007, wing: 0 },
+                { x: 0.72, y: 0.16, spd: 0.0009, wing: 2.1 },
+                { x: 0.42, y: 0.28, spd: 0.0006, wing: 4.2 }
+            ],
+            hotAirBalloons: [
+                { x: 0.10, y: 0.34, scale: 0.85, c1: '#e11d48', c2: '#fde047' },
+                { x: 0.89, y: 0.29, scale: 0.95, c1: '#7c3aed', c2: '#38bdf8' },
+                { x: 0.23, y: 0.47, scale: 0.56, c1: '#10b981', c2: '#ffffff' },
+                { x: 0.79, y: 0.46, scale: 0.62, c1: '#f97316', c2: '#fef08a' }
+            ]
+        };
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        // Click / Tap directly on the 2.5D pitch to aim delivery bounce marker
+        canvas.addEventListener('pointerdown', (e) => {
+            if (state.screen !== 'MATCH' || sim.phase !== 'AIMING') return;
+            if (state.myRole !== 'BOWL' && state.myRole !== 'BOTH') return;
+
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = w / 2;
+            const pitchTopY = h * 0.61;
+            const pitchBotY = h * 0.84;
+
+            if (e.clientY >= pitchTopY - 25 && e.clientY <= pitchBotY + 25) {
+                const normY = Math.max(0.15, Math.min(0.95, (e.clientY - pitchTopY) / (pitchBotY - pitchTopY)));
+                const halfW = 36 + normY * 32;
+                const normX = Math.max(-0.92, Math.min(0.92, (e.clientX - cx) / halfW));
+
+                state.aimX = normX;
+                state.aimY = normY;
+                SFX.pop();
+                syncBowlerAim();
+            }
+        });
+
+        // Keyboard shortcuts: Spacebar (Bowl / Swing) & Arrow Keys (Shot Direction)
+        window.addEventListener('keydown', (e) => {
+            if (state.screen !== 'MATCH') return;
+            if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (sim.phase === 'AIMING' && (state.myRole === 'BOWL' || state.myRole === 'BOTH')) {
+                    executeBowlDelivery();
+                } else if (sim.phase === 'BOWLING' && state.myRole === 'BAT') {
+                    executeBatSwing();
+                }
+            } else if (state.myRole === 'BAT') {
+                if (e.code === 'ArrowLeft') selectShotDirection('off');
+                if (e.code === 'ArrowUp') selectShotDirection('straight');
+                if (e.code === 'ArrowRight') selectShotDirection('leg');
+                if (e.code === 'ArrowDown') selectShotDirection('defend');
+            }
+        });
+
+        function updateSimulation() {
+            sim.tick += 0.02;
+            sim.propAngle += 0.36;
+
+            // Soaring birds
+            sim.birds.forEach(b => {
+                b.x += b.spd;
+                b.wing += 0.14;
+                if (b.x > 1.08) b.x = -0.08;
+            });
+
+            // Idle lobby warm-up animation
+            if (sim.phase === 'IDLE') {
+                const cycle = sim.tick % 4.5;
+                sim.batterSwing = (cycle > 2.6 && cycle < 3.4) ? (cycle - 2.6) : 0;
+                sim.bowlerRun = (Math.sin(sim.tick * 1.4) + 1) * 0.25;
+                return;
+            }
+
+            // Active delivery animation
+            if (sim.phase === 'BOWLING') {
+                if (sim.bowlerRun < 1) {
+                    sim.bowlerRun = Math.min(1, sim.bowlerRun + 0.05);
+                } else {
+                    sim.ball.progress += sim.ball.speed;
+                    if (sim.ball.progress >= 1.0 && !sim.ball.hit) {
+                        evaluateUnplayedDelivery();
+                    }
+                }
+            } else if (sim.phase === 'HIT_FLIGHT') {
+                sim.ball.hitProgress = Math.min(1.2, sim.ball.hitProgress + 0.028);
+            }
+
+            if (sim.batterSwing > 0) {
+                sim.batterSwing = Math.max(0, sim.batterSwing - 0.04);
+            }
+        }
+
+        function renderStadium() {
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = w / 2;
+            const bobY = Math.sin(sim.tick) * 6;
+            const swayX = Math.cos(sim.tick * 0.6) * 8;
+
+            // 1. Stratosphere Sky Gradient
+            const sky = ctx.createLinearGradient(0, 0, 0, h);
+            sky.addColorStop(0, '#062038');
+            sky.addColorStop(0.38, '#0284c7');
+            sky.addColorStop(0.75, '#7dd3fc');
+            sky.addColorStop(1, '#fef3c7');
+            ctx.fillStyle = sky;
+            ctx.fillRect(0, 0, w, h);
+
+            // Sun Glow & Diagonal Volumetric Sunbeams
+            const sunX = w * 0.14;
+            const sunY = h * 0.14;
+            const sun = ctx.createRadialGradient(sunX, sunY, 5, sunX, sunY, 130);
+            sun.addColorStop(0, 'rgba(254, 249, 195, 0.98)');
+            sun.addColorStop(0.45, 'rgba(253, 224, 71, 0.35)');
+            sun.addColorStop(1, 'rgba(254, 249, 195, 0)');
+            ctx.fillStyle = sun;
+            ctx.beginPath();
+            ctx.arc(sunX, sunY, 130, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.save();
+            const beam = ctx.createLinearGradient(sunX, sunY, w * 0.72, h * 0.85);
+            beam.addColorStop(0, 'rgba(254, 249, 195, 0.16)');
+            beam.addColorStop(1, 'rgba(254, 249, 195, 0)');
+            ctx.fillStyle = beam;
+            [0.10, 0.32, 0.54].forEach((offset, idx) => {
+                ctx.beginPath();
+                ctx.moveTo(sunX, sunY);
+                ctx.lineTo(w * (0.24 + offset), h);
+                ctx.lineTo(w * (0.40 + offset + idx * 0.03), h);
+                ctx.closePath();
+                ctx.fill();
+            });
+            ctx.restore();
+
+            // 2. Parallax Background Hot-Air Balloons & Soaring Birds
+            sim.hotAirBalloons.forEach((b, idx) => {
+                const bx = (b.x + Math.sin(sim.tick * 0.25 + idx * 1.7) * 0.03) * w;
+                const by = b.y * h + Math.cos(sim.tick * 0.9 + idx) * 7;
+                drawHotAirBalloon(bx, by, b.scale, b.c1, b.c2);
+            });
+
+            ctx.strokeStyle = 'rgba(15, 23, 42, 0.45)';
+            ctx.lineWidth = 2;
+            sim.birds.forEach(bird => {
+                const bx = bird.x * w;
+                const by = bird.y * h;
+                const flap = Math.sin(bird.wing) * 5;
+                ctx.beginPath();
+                ctx.moveTo(bx - 8, by + flap);
+                ctx.quadraticCurveTo(bx - 4, by - 4, bx, by);
+                ctx.quadraticCurveTo(bx + 4, by - 4, bx + 8, by + flap);
+                ctx.stroke();
+            });
+
+            // 3. Lower Cumulus Cloud Sea Below the Floating Stadium
+            ctx.fillStyle = 'rgba(224, 242, 254, 0.58)';
+            for (let x = -60; x <= w + 80; x += 95) {
+                const drift = Math.sin(sim.tick * 0.5 + x * 0.01) * 7;
+                ctx.beginPath();
+                ctx.arc(x + drift, h * 0.89, 64, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+            for (let x = -40; x <= w + 60; x += 82) {
+                ctx.beginPath();
+                ctx.arc(x, h * 0.94, 54, 0, Math.PI * 2);
+                ctx.arc(x + 36, h * 0.97, 45, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // 4. GIANT CENTERPIECE TETHERED HELIUM DIRIGIBLE / GAS BALLOON
+            const blimpY = h * 0.16 + bobY;
+            const blimpRX = Math.min(255, w * 0.30);
+            const blimpRY = Math.min(58, h * 0.11);
+
+            ctx.save();
+            ctx.translate(cx + swayX, blimpY);
+
+            // Red Tail Fins
+            ctx.fillStyle = '#e11d48';
+            ctx.beginPath();
+            ctx.moveTo(-blimpRX + 14, -14);
+            ctx.lineTo(-blimpRX - 28, -36);
+            ctx.lineTo(-blimpRX - 14, 0);
+            ctx.lineTo(-blimpRX - 28, 36);
+            ctx.lineTo(-blimpRX + 14, 14);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = '#fef08a';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Multi-Panel Striped Balloon Envelope
+            ctx.beginPath();
+            ctx.ellipse(0, 0, blimpRX, blimpRY, 0, 0, Math.PI * 2);
+            ctx.save();
+            ctx.clip();
+
+            const envGrad = ctx.createLinearGradient(0, -blimpRY, 0, blimpRY);
+            envGrad.addColorStop(0, '#fef08a');
+            envGrad.addColorStop(0.5, '#f59e0b');
+            envGrad.addColorStop(1, '#b45309');
+            ctx.fillStyle = envGrad;
+            ctx.fillRect(-blimpRX, -blimpRY, blimpRX * 2, blimpRY * 2);
+
+            ctx.fillStyle = '#e11d48';
+            ctx.fillRect(-blimpRX, -blimpRY * 0.34, blimpRX * 2, blimpRY * 0.68);
+            ctx.fillStyle = '#0284c7';
+            ctx.fillRect(-blimpRX * 0.44, -blimpRY, blimpRX * 0.88, blimpRY * 2);
+
+            // Rib Seams & Specular Highlight
+            ctx.strokeStyle = 'rgba(15, 23, 42, 0.22)';
+            ctx.lineWidth = 1.5;
+            [-0.65, -0.32, 0, 0.32, 0.65].forEach(rx => {
+                ctx.beginPath();
+                ctx.ellipse(rx * blimpRX, 0, blimpRX * 0.14, blimpRY, 0, 0, Math.PI * 2);
+                ctx.stroke();
+            });
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.32)';
+            ctx.beginPath();
+            ctx.ellipse(0, -blimpRY * 0.45, blimpRX * 0.84, blimpRY * 0.25, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, blimpRX, blimpRY, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Gondola Cabin + "SKYBLIMP ARENA" Banner + Spinning Propeller
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.roundRect(-56, blimpRY - 2, 112, 18, 6);
+            ctx.fill();
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            ctx.fillStyle = '#fef08a';
+            ctx.font = '800 9px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('SKYBLIMP ARENA', 0, blimpRY + 10);
+
+            const propH = Math.sin(sim.propAngle) * 15;
+            ctx.strokeStyle = '#f8fafc';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(-60, blimpRY + 7 - propH);
+            ctx.lineTo(-60, blimpRY + 7 + propH);
+            ctx.stroke();
+            ctx.restore();
+
+            // 5. TAUT STEEL SUSPENSION CABLES TO FLOATING STADIUM PLATFORM
+            const platY = h * 0.72;
+            const platRX = Math.max(40, Math.min(430, w * 0.46));
+            const platRY = Math.max(20, Math.min(122, h * 0.22));
+
+            ctx.strokeStyle = 'rgba(241, 245, 249, 0.85)';
+            ctx.lineWidth = 2.2;
+            [-0.88, -0.46, 0.46, 0.88].forEach(f => {
+                ctx.beginPath();
+                ctx.moveTo(cx + swayX + f * (blimpRX * 0.66), blimpY + blimpRY * 0.75);
+                ctx.lineTo(cx + f * platRX, platY);
+                ctx.stroke();
+            });
+
+            // 6. FLOATING CIRCULAR CRICKET STADIUM DECK & TURF
+            // Under-hull metallic rim
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.ellipse(cx, platY + 16, platRX, platRY, 0, 0, Math.PI);
+            ctx.fill();
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Tiered Spectator Gallery & Animated Crowd Dots
+            ctx.fillStyle = '#1e293b';
+            ctx.beginPath();
+            ctx.ellipse(cx, platY - 4, platRX + 14, platRY + 12, 0, Math.PI, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            const crowdColors = ['#38bdf8', '#f43f5e', '#fbbf24', '#34d399', '#ffffff'];
+            for (let a = Math.PI * 1.06; a <= Math.PI * 1.94; a += 0.05) {
+                const fx = cx + Math.cos(a) * (platRX + 6);
+                const fy = platY - 4 + Math.sin(a) * (platRY + 6) + Math.sin(sim.tick * 4 + a * 12) * 1.8;
+                ctx.fillStyle = crowdColors[Math.floor(a * 10) % crowdColors.length];
+                ctx.beginPath();
+                ctx.arc(fx, fy, 3.2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Lush Emerald Turf
+            const turf = ctx.createRadialGradient(cx, platY, 15, cx, platY, platRX);
+            turf.addColorStop(0, '#22c55e');
+            turf.addColorStop(0.7, '#16a34a');
+            turf.addColorStop(1, '#15803d');
+            ctx.fillStyle = turf;
+            ctx.beginPath();
+            ctx.ellipse(cx, platY, platRX, platRY, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // White Boundary Rope
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3.5;
+            ctx.setLineDash([12, 8]);
+            ctx.beginPath();
+            ctx.ellipse(cx, platY, Math.max(10, platRX - 10), Math.max(6, platRY - 6), 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 7. CENTRAL 22-YARD CLAY PITCH, CREASES & STUMPS
+            const pitchTopY = platY - platRY * 0.48;
+            const pitchBotY = platY + platRY * 0.56;
+            const topHalfW = 30;
+            const botHalfW = 58;
+
+            ctx.fillStyle = '#eab308';
+            ctx.beginPath();
+            ctx.moveTo(cx - topHalfW, pitchTopY);
+            ctx.lineTo(cx + topHalfW, pitchTopY);
+            ctx.lineTo(cx + botHalfW, pitchBotY);
+            ctx.lineTo(cx - botHalfW, pitchBotY);
+            ctx.closePath();
+            ctx.fill();
+
+            // Crease Lines
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx - topHalfW - 4, pitchTopY + 12);
+            ctx.lineTo(cx + topHalfW + 4, pitchTopY + 12);
+            ctx.moveTo(cx - botHalfW - 6, pitchBotY - 16);
+            ctx.lineTo(cx + botHalfW + 6, pitchBotY - 16);
+            ctx.stroke();
+
+            // Far & Near Wooden Stumps
+            drawStumps(cx, pitchTopY + 8, 0.72, false);
+            drawStumps(cx, pitchBotY - 10, 1.0, sim.bailsFlying);
+
+            // Pitch Bounce Aim Marker (during AIMING)
+            if (sim.phase === 'AIMING' || sim.phase === 'IDLE') {
+                const ay = pitchTopY + state.aimY * (pitchBotY - pitchTopY);
+                const hw = topHalfW + state.aimY * (botHalfW - topHalfW);
+                const ax = cx + state.aimX * hw;
+
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.ellipse(ax, ay, 11, 5, 0, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.35)';
+                ctx.fill();
+            }
+
+            // 8. ARTICULATED CRICKET PLAYERS (OUTFIELDERS, KEEPER, BOWLER, BATTER)
+            const batTeam = state.battingTeamNum === 1 ? state.team1 : state.team2;
+            const bowlTeam = state.battingTeamNum === 1 ? state.team2 : state.team1;
+
+            // Patrolling Outfielders
+            const fielderOffsets = [
+                { rx: -0.62, ry: -0.18 },
+                { rx: 0.62, ry: -0.18 },
+                { rx: -0.45, ry: 0.32 },
+                { rx: 0.45, ry: 0.32 }
+            ];
+            fielderOffsets.forEach((f, idx) => {
+                const fx = cx + f.rx * platRX + Math.sin(sim.tick * 1.3 + idx) * 14;
+                const fy = platY + f.ry * platRY;
+                drawCricketer(fx, fy, 0.72, bowlTeam.color, false, 0);
+            });
+
+            // Wicketkeeper behind near stumps
+            drawCricketer(cx + 12, pitchBotY + 14, 0.92, bowlTeam.color, false, 0);
+
+            // Bowler running in at far end
+            const bowlerY = pitchTopY - 16 + sim.bowlerRun * 24;
+            drawCricketer(cx - 14, bowlerY, 0.76, bowlTeam.color, false, 0);
+
+            // Striker Batter at crease with willow bat
+            drawCricketer(cx - 22, pitchBotY - 14, 1.0, batTeam.color, true, sim.batterSwing);
+
+            // 9. LIVE CRICKET BALL & BATTER TIMING GAUGE
+            if (sim.ball.active) {
+                renderActiveBall(cx, pitchTopY, pitchBotY, topHalfW, botHalfW, platRX, platRY, platY);
+            }
+            if (sim.phase === 'BOWLING' && state.myRole === 'BAT') {
+                renderBatterTimingGauge(w, h);
+            }
+        }
+
+        function drawHotAirBalloon(x, y, scale, c1, c2) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(scale, scale);
+
+            ctx.fillStyle = c1;
+            ctx.beginPath();
+            ctx.arc(0, -14, 22, Math.PI * 0.82, Math.PI * 2.18);
+            ctx.lineTo(8, 12);
+            ctx.lineTo(-8, 12);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            ctx.fillStyle = c2;
+            ctx.beginPath();
+            ctx.ellipse(0, -8, 8, 22, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = '#f8fafc';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(-6, 12); ctx.lineTo(-4, 20);
+            ctx.moveTo(6, 12); ctx.lineTo(4, 20);
+            ctx.stroke();
+
+            ctx.fillStyle = '#78350f';
+            ctx.fillRect(-6, 20, 12, 8);
+            ctx.restore();
+        }
+
+        function drawStumps(x, y, scale, flyingBails) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(scale, scale);
+
+            ctx.fillStyle = '#fef3c7';
+            ctx.strokeStyle = '#78350f';
+            ctx.lineWidth = 1.2;
+            [-8, 0, 8].forEach(sx => {
+                ctx.fillRect(sx - 1.8, -22, 3.6, 22);
+                ctx.strokeRect(sx - 1.8, -22, 3.6, 22);
+            });
+
+            // Bails
+            ctx.fillStyle = '#ef4444';
+            if (flyingBails) {
+                const offset = (sim.tick * 25) % 24;
+                ctx.fillRect(-14 - offset * 0.4, -28 - offset, 8, 3);
+                ctx.fillRect(6 + offset * 0.4, -30 - offset * 0.8, 8, 3);
+            } else {
+                ctx.fillRect(-9, -24, 8, 2.5);
+                ctx.fillRect(1, -24, 8, 2.5);
+            }
+            ctx.restore();
+        }
+
+        function drawCricketer(x, y, scale, jerseyColor, hasBat, swingAmt) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(scale, scale);
+
+            // Ground shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.28)';
+            ctx.beginPath();
+            ctx.ellipse(0, 2, 10, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // White Trousers / Pads
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillRect(-6, -14, 5, 14);
+            ctx.fillRect(1, -14, 5, 14);
+
+            // Team Jersey
+            ctx.fillStyle = jerseyColor;
+            ctx.beginPath();
+            ctx.roundRect(-8, -28, 16, 15, 4);
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+
+            // Helmet / Cap & Head
+            ctx.fillStyle = '#fed7aa';
+            ctx.beginPath();
+            ctx.arc(0, -34, 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = jerseyColor;
+            ctx.beginPath();
+            ctx.arc(0, -36, 6.2, Math.PI, 0);
+            ctx.fill();
+
+            // Willow Cricket Bat (for Batter)
+            if (hasBat) {
+                ctx.save();
+                ctx.translate(7, -20);
+                ctx.rotate(-0.35 + swingAmt * 1.9);
+                ctx.fillStyle = '#1e293b';
+                ctx.fillRect(-1.5, -2, 3, 8);
+                ctx.fillStyle = '#d97706';
+                ctx.strokeStyle = '#78350f';
+                ctx.lineWidth = 1.2;
+                ctx.fillRect(-3.5, 6, 7, 22);
+                ctx.strokeRect(-3.5, 6, 7, 22);
+                ctx.restore();
+            }
+
+            ctx.restore();
+        }
+
+        function renderActiveBall(cx, pitchTopY, pitchBotY, topHalfW, botHalfW, platRX, platRY, platY) {
+            const b = sim.ball;
+            let bx = cx;
+            let by = pitchTopY;
+            let bounceLift = 0;
+
+            if (!b.hit) {
+                const p = b.progress;
+                by = pitchTopY + p * (pitchBotY - pitchTopY);
+                const hw = topHalfW + p * (botHalfW - topHalfW);
+
+                // Curve after pitch bounce
+                const bounceP = state.aimY;
+                const postBounce = Math.max(0, (p - bounceP) / Math.max(0.1, 1 - bounceP));
+                const curveOffset = postBounce * (state.swingCurve / 150) + p * (sim.windKmh / 65);
+                bx = cx + (state.aimX + curveOffset) * hw;
+
+                // Parabolic bounce height
+                if (p < bounceP) {
+                    bounceLift = Math.sin((p / bounceP) * Math.PI) * 18;
+                } else {
+                    const maxHeight = state.deliveryType === 'bouncer' ? 32 : (state.deliveryType === 'yorker' ? 6 : 16);
+                    bounceLift = Math.sin(postBounce * Math.PI * 0.85) * maxHeight;
+                }
+            } else {
+                const hp = b.hitProgress;
+                bx = cx + Math.sin(b.outAngle) * (platRX * b.outDistance * hp);
+                by = (pitchBotY - 12) - Math.cos(b.outAngle) * (platRY * 1.35 * hp);
+                bounceLift = Math.sin(Math.min(1, hp) * Math.PI) * (b.outDistance > 1.1 ? 85 : 34);
+            }
+
+            b.trail.push({ x: bx, y: by - bounceLift });
+            if (b.trail.length > 10) b.trail.shift();
+
+            // Motion trail
+            b.trail.forEach((pt, i) => {
+                ctx.fillStyle = `rgba(254, 240, 138, ${(i / b.trail.length) * 0.45})`;
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, 3 + i * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Ground shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.35)';
+            ctx.beginPath();
+            ctx.ellipse(bx, by + 2, 6, 2.5, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Cherry Red Leather Cricket Ball
+            ctx.fillStyle = '#dc2626';
+            ctx.beginPath();
+            ctx.arc(bx, by - bounceLift, 6.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#fef9c3';
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+        }
+
+        function renderBatterTimingGauge(w, h) {
+            const barW = Math.min(340, w * 0.68);
+            const barH = 18;
+            const bx = (w - barW) / 2;
+            const by = h - 135;
+
+            ctx.save();
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+            ctx.beginPath();
+            ctx.roundRect(bx - 5, by - 5, barW + 10, barH + 10, 10);
+            ctx.fill();
+
+            // Timing zones
+            ctx.fillStyle = '#ef4444';
+            ctx.fillRect(bx, by, barW, barH);
+            ctx.fillStyle = '#facc15';
+            ctx.fillRect(bx + barW * 0.68, by, barW * 0.28, barH);
+            ctx.fillStyle = '#10b981';
+            ctx.fillRect(bx + barW * 0.80, by, barW * 0.12, barH);
+
+            // Ball progress marker
+            const curX = bx + Math.min(1, sim.ball.progress) * barW;
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(curX - 3, by - 4, 6, barH + 8);
+            ctx.restore();
+        }
+
+        function mainLoop() {
+            if (canvas.width <= 0 || canvas.height <= 0) {
+                resizeCanvas();
+            }
+            if (canvas.width > 0 && canvas.height > 0) {
+                updateSimulation();
+                renderStadium();
+            }
+            requestAnimationFrame(mainLoop);
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        window.onload = function () {
+            resizeCanvas();
+            checkInviteUrlParam();
+            mainLoop();
+        };
+    </script>
+</body>
+</html>
